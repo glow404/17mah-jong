@@ -1,0 +1,18 @@
+# Keep source and documentation consistent across Windows, macOS, and Linux.
+* text=auto eol=lf
+
+# Windows command files require CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Binary assets must never be line-ending normalized.
+*.gif binary
+*.ico binary
+*.jpeg binary
+*.jpg binary
+*.mp3 binary
+*.ogg binary
+*.png binary
+*.webp binary
+*.woff binary
+*.woff2 binary
