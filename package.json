@@ -30,9 +30,15 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "tsx --test tests/mahjong.test.ts && npm run build",
+    "test": "npm run test:unit",
+    "test:unit": "tsx --test tests/mahjong.test.ts",
+    "test:coverage": "tsx --test --experimental-test-coverage tests/mahjong.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "typecheck": "tsc --noEmit",
+    "ci": "npm run lint && npm run typecheck && npm run test:coverage && npm run build",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate:local": "wrangler d1 migrations apply mahjong-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply mahjong-db --remote"
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

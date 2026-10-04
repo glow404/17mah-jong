@@ -9,7 +9,7 @@ import { defineConfig } from "vite";
 
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   server: isCodexSeatbeltSandbox
     ? {
         watch: {
@@ -22,7 +22,8 @@ export default defineConfig({
   plugins: [
     vinext(),
 
-    sites(),
+    // 托管插件只参与生产构建；本地开发不应依赖托管平台登录态。
+    ...(command === "build" ? [sites()] : []),
 
     cloudflare({
       viteEnvironment: {
@@ -31,4 +32,4 @@ export default defineConfig({
       },
     }),
   ],
-});
+}));

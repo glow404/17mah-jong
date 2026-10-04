@@ -78,11 +78,12 @@ chore(deps): update development dependencies
 
 ```bash
 npm run lint
-npx tsc --noEmit
-npm test
+npm run typecheck
+npm run test:coverage
+npm run build
 ```
 
-`npm test` 会运行规则测试并执行生产构建。所有命令都应成功，且不应产生新的警告。
+也可以使用 `npm run ci` 一次执行上述全部质量检查。所有命令都应成功，且不应产生新的警告。
 
 ## Pull Request 流程
 
