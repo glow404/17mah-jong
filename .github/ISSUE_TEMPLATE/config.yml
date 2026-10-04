@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私下报告安全漏洞
+    url: https://github.com/glow404/17mah-jong/security/advisories/new
+    about: 请勿公开披露未修复漏洞、Token、Cookie 或真实用户数据。
+  - name: 查看开源路线图
+    url: https://github.com/glow404/17mah-jong/blob/main/OPEN_SOURCE_ROADMAP.md
+    about: 提交功能建议前请先检查现有计划。

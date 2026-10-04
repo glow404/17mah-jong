@@ -1,7 +1,28 @@
 {
   "name": "17mah-jong",
   "version": "0.1.0",
+  "description": "A full-stack two-player Japanese mahjong duel with custom hand building, online rooms, AI opponents, dora, and furiten.",
   "private": true,
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glow404/17mah-jong.git"
+  },
+  "homepage": "https://mah-jong-duel-17.vuhanhst943546.chatgpt.site",
+  "bugs": {
+    "url": "https://github.com/glow404/17mah-jong/issues"
+  },
+  "keywords": [
+    "mahjong",
+    "riichi-mahjong",
+    "two-player-game",
+    "multiplayer",
+    "web-game",
+    "react",
+    "typescript",
+    "cloudflare-workers",
+    "cloudflare-d1"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },

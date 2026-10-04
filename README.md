@@ -29,8 +29,9 @@ npm run dev
 ## 验证
 
 ```bash
+npm run lint
 npx tsc --noEmit
-npm run build
+npm test
 ```
 
 ## 主要目录
@@ -40,3 +41,9 @@ npm run build
 - `app/api/rooms/route.ts`：房间创建、加入、选牌、轮流舍牌与荣和
 - `app/api/auth/route.ts` 与 `db/auth.ts`：邮箱注册、登录和安全会话
 - `db/` 与 `drizzle/`：D1 房间状态和数据库迁移
+
+## 参与贡献
+
+欢迎从 [`good first issue`](https://github.com/glow404/17mah-jong/labels/good%20first%20issue) 开始参与。提交代码前请阅读 [贡献指南](CONTRIBUTING.md) 和 [社区行为准则](CODE_OF_CONDUCT.md)；未修复的安全漏洞请按照 [安全策略](SECURITY.md) 私下报告。
+
+项目采用 [MIT License](LICENSE)。版本变化记录在 [CHANGELOG.md](CHANGELOG.md)，开源成熟化计划记录在 [OPEN_SOURCE_ROADMAP.md](OPEN_SOURCE_ROADMAP.md)。
