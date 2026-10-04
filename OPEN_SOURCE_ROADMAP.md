@@ -41,17 +41,17 @@
 
 ### 2. 开源项目基础文件
 
-- [ ] 选择并添加开源许可证，建议 MIT 或 Apache-2.0。
-- [ ] 添加 `CONTRIBUTING.md`，说明开发环境、分支、提交和 PR 流程。
-- [ ] 添加 `CODE_OF_CONDUCT.md`。
-- [ ] 添加 `SECURITY.md`，说明漏洞报告方式和支持版本。
-- [ ] 添加 `CHANGELOG.md`，采用 Keep a Changelog 或同类规范。
-- [ ] 添加 Bug Report Issue 模板。
-- [ ] 添加 Feature Request Issue 模板。
-- [ ] 添加 Pull Request 模板和验收检查表。
-- [ ] 添加 `good first issue` 和 `help wanted` 标签及首批适合贡献者的任务。
-- [ ] 为 `package.json` 补充 `description`、`repository`、`homepage`、`bugs`、`license`、`keywords` 等元数据。
-- [ ] 保留 `private: true`，除非未来决定把规则引擎作为 npm 包发布。
+- [x] 选择并添加开源许可证，建议 MIT 或 Apache-2.0。
+- [x] 添加 `CONTRIBUTING.md`，说明开发环境、分支、提交和 PR 流程。
+- [x] 添加 `CODE_OF_CONDUCT.md`。
+- [x] 添加 `SECURITY.md`，说明漏洞报告方式和支持版本。
+- [x] 添加 `CHANGELOG.md`，采用 Keep a Changelog 或同类规范。
+- [x] 添加 Bug Report Issue 模板。
+- [x] 添加 Feature Request Issue 模板。
+- [x] 添加 Pull Request 模板和验收检查表。
+- [x] 添加 `good first issue` 和 `help wanted` 标签及首批适合贡献者的任务。
+- [x] 为 `package.json` 补充 `description`、`repository`、`homepage`、`bugs`、`license`、`keywords` 等元数据。
+- [x] 保留 `private: true`，除非未来决定把规则引擎作为 npm 包发布。
 
 ### 3. README 与项目展示
 
