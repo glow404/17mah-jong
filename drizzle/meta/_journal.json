@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1786863670688,
+      "tag": "0000_jazzy_thunderbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1786867201485,
+      "tag": "0001_tiresome_morlun",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786867221776,
+      "tag": "0002_yielding_matthew_murdock",
+      "breakpoints": true
+    }
+  ]
+}
