@@ -178,8 +178,8 @@ function Tile({ tile, physicalId, selected, hidden, small, onClick, disabled, ti
 
 function RulesModal({ onClose }: { onClose: () => void }) {
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="rules-modal" role="dialog" aria-modal="true" aria-labelledby="rules-title" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="rules-modal" role="dialog" aria-modal="true" aria-labelledby="rules-title">
         <button className="modal-close" type="button" onClick={onClose} aria-label="关闭规则">×</button>
         <p className="eyebrow"><span /> 对局规则</p>
         <h2 id="rules-title">17 巡定胜负</h2>
@@ -215,8 +215,8 @@ function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (us
     finally { setBusy(false); }
   };
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title" onMouseDown={(event) => event.stopPropagation()}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
         <button className="modal-close" type="button" onClick={onClose} aria-label="关闭登录">×</button>
         <p className="eyebrow"><span /> 牌手账号</p>
         <h2 id="auth-title">{mode === "login" ? "登录后联机对战" : "注册新的牌手账号"}</h2>
@@ -638,13 +638,13 @@ export default function GameClient() {
     const count = game ? game.counts[0] + game.counts[1] : 0;
     if (count > localSoundCount.current && soundEnabled) audioRef.current?.discard();
     localSoundCount.current = count;
-  }, [game?.counts, soundEnabled]);
+  }, [game, soundEnabled]);
 
   useEffect(() => {
     const count = remote ? remote.counts[0] + remote.counts[1] : 0;
     if (count > remoteSoundCount.current && soundEnabled) audioRef.current?.discard();
     remoteSoundCount.current = count;
-  }, [remote?.counts, soundEnabled]);
+  }, [remote, soundEnabled]);
 
   useEffect(() => {
     const result = game?.result ?? remote?.result;

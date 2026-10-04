@@ -347,7 +347,7 @@ export function suggestTenpaiHand(pool: number[], indicator: number, wind: SeatW
     const remaining = [...poolCounts];
     const chosen: number[] = [];
     const startCount = considered;
-    const useMeld = (option: Meld, delta: number) => {
+    const applyMeld = (option: Meld, delta: number) => {
       const tiles = option.kind === "triplet" ? [option.tile, option.tile, option.tile] : [option.tile, option.tile + 1, option.tile + 2];
       tiles.forEach((tile) => { remaining[tile] += delta; });
       return tiles;
@@ -374,11 +374,11 @@ export function suggestTenpaiHand(pool: number[], indicator: number, wind: SeatW
         const tiles = option.kind === "triplet" ? [option.tile, option.tile, option.tile] : [option.tile, option.tile + 1, option.tile + 2];
         const need = countsOf(tiles);
         if (need.some((count, tile) => count > remaining[tile])) continue;
-        useMeld(option, -1);
+        applyMeld(option, -1);
         chosen.push(...tiles);
         walk(depth + 1, index);
         chosen.splice(chosen.length - 3, 3);
-        useMeld(option, 1);
+        applyMeld(option, 1);
       }
     };
     walk(0, 0);
