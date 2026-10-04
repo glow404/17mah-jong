@@ -6,11 +6,6 @@
 
 ## Unreleased
 
-### Added
-
-- MIT 许可证、贡献指南、行为准则和安全策略。
-- GitHub Issue Forms、Pull Request 模板及社区贡献标签。
-
 ## 0.1.0 - 2026-10-04
 
 ### Added
@@ -24,8 +19,14 @@
 - 麻将图案牌面、背景音乐、舍牌和荣和音效。
 - Cloudflare Workers、D1、Drizzle ORM 部署结构。
 - 核心规则测试、ESLint、TypeScript 类型检查和生产构建验证。
+- MIT 许可证、贡献指南、行为准则和安全策略。
+- GitHub Issue Forms、Pull Request 模板及社区贡献标签。
+- 公开试玩入口、桌面与移动端截图，以及 31 秒核心玩法演示。
+- 完整规则、架构、数据流、开发部署说明和资源许可审计。
+- GitHub Actions CI 与规则引擎覆盖率报告。
 
 ### Changed
 
 - 将项目整理为独立公开仓库并采用 Conventional Commits。
 - 统一仓库文本文件为 LF，并排除缓存、构建产物和本地数据库。
+- 本地开发不再依赖托管平台登录态，并默认使用本地 D1。
