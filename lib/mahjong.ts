@@ -59,18 +59,21 @@ export function sortTiles<T extends number>(tiles: T[]) {
   return [...tiles].sort((a, b) => tileType(a) - tileType(b) || a - b);
 }
 
-export function shuffle<T>(items: T[]) {
+export function shuffle<T>(items: T[], random: () => number = Math.random) {
   const copy = [...items];
   for (let index = copy.length - 1; index > 0; index -= 1) {
-    const other = Math.floor(Math.random() * (index + 1));
+    const other = Math.floor(random() * (index + 1));
     [copy[index], copy[other]] = [copy[other], copy[index]];
   }
   return copy;
 }
 
-export function createWall() {
+export function createWall(random: () => number = Math.random) {
   // 保留实体编号，选牌和舍牌时可以区分四张相同牌种的实体牌。
-  return shuffle(Array.from({ length: 136 }, (_, index) => index));
+  return shuffle(
+    Array.from({ length: 136 }, (_, index) => index),
+    random,
+  );
 }
 
 export function doraFromIndicator(indicator: number) {
@@ -146,6 +149,8 @@ function isKokushi(tiles: number[]) {
 
 export function isWinningHand(tiles: number[]) {
   if (tiles.length !== 14) return false;
+  if (tiles.some((tile) => !Number.isInteger(tile) || tile < 0 || tile >= 34)) return false;
+  if (countsOf(tiles).some((count) => count > 4)) return false;
   return isChiitoitsu(tiles) || isKokushi(tiles) || decompositions(tiles).length > 0;
 }
 
@@ -160,7 +165,7 @@ export function waitTypes(hand: number[]) {
   return waits;
 }
 
-function limitFor(
+export function limitFor(
   han: number,
   fu: number,
   yakuman = false,
