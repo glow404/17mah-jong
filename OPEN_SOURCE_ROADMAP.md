@@ -76,7 +76,7 @@
 - [x] 添加 `test:coverage` 脚本并输出覆盖率报告。
 - [x] 添加统一的 `ci` 脚本，串联安装、Lint、类型检查、测试和构建。
 - [x] 配置 GitHub Actions，在每次 Push 和 Pull Request 时运行 CI。
-- [ ] 配置默认分支保护，禁止未通过 CI 的 PR 合并。
+- [x] 配置默认分支保护，禁止未通过 CI 的 PR 合并。
 - [x] 配置 Dependabot 或 Renovate 自动提交依赖更新。
 - [x] 添加代码格式化工具并建立统一格式化规则。
 - [x] 设置核心规则代码覆盖率目标不低于 90%。
