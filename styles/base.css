@@ -1,0 +1,11 @@
+:root {
+  --color-ink: #17221d;
+  --color-paper: #f6f1e7;
+  --color-accent: #c15b3d;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}

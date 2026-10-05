@@ -1,0 +1,9 @@
+.game-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.game-action-bar.is-disabled {
+  opacity: 0.65;
+}
