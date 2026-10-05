@@ -8,6 +8,11 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { DiscardRiver } from '../components/DiscardRiver';
+import { GameActionBar } from '../components/GameActionBar';
+import { MahjongTile } from '../components/MahjongTile';
+import { GameAudio } from '../lib/audio';
+import { useRemotePolling } from '../hooks/useRemotePolling';
 import {
   createWall,
   describeWaits,
@@ -16,12 +21,13 @@ import {
   isFuriten,
   sortTiles,
   suggestTenpaiHand,
-  tileLabel,
-  tileGlyph,
   tileText,
   tileType,
   type ScoreResult,
 } from '../lib/mahjong';
+
+const Tile = MahjongTile;
+const River = DiscardRiver;
 
 type Screen = 'home' | 'select' | 'playing' | 'online';
 type Seat = 0 | 1;
@@ -101,115 +107,6 @@ const AppContext = createContext<{
   soundEnabled: true,
   toggleSound: () => undefined,
 });
-
-class GameAudio {
-  private context: AudioContext | null = null;
-  private musicTimer: number | null = null;
-  private musicStep = 0;
-
-  async ensure() {
-    this.context ??= new AudioContext();
-    if (this.context.state === 'suspended') await this.context.resume();
-    return this.context;
-  }
-
-  private async tone(
-    frequency: number,
-    duration: number,
-    volume: number,
-    delay = 0,
-    type: OscillatorType = 'sine',
-  ) {
-    const context = await this.ensure();
-    const oscillator = context.createOscillator();
-    const gain = context.createGain();
-    const start = context.currentTime + delay;
-    oscillator.type = type;
-    oscillator.frequency.setValueAtTime(frequency, start);
-    oscillator.frequency.exponentialRampToValueAtTime(
-      Math.max(55, frequency * 0.78),
-      start + duration,
-    );
-    gain.gain.setValueAtTime(0.0001, start);
-    gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    oscillator.connect(gain).connect(context.destination);
-    oscillator.start(start);
-    oscillator.stop(start + duration + 0.02);
-  }
-
-  discard() {
-    void this.tone(240, 0.075, 0.09, 0, 'triangle');
-    void this.tone(105, 0.1, 0.055, 0.025, 'sine');
-  }
-
-  ron() {
-    [392, 523.25, 659.25, 783.99].forEach(
-      (frequency, index) => void this.tone(frequency, 0.42, 0.075, index * 0.105, 'triangle'),
-    );
-  }
-
-  async startMusic() {
-    if (this.musicTimer !== null) return;
-    await this.ensure();
-    const notes = [130.81, 164.81, 196, 246.94, 196, 164.81];
-    const play = () => {
-      void this.tone(notes[this.musicStep % notes.length], 0.7, 0.018, 0, 'sine');
-      if (this.musicStep % 3 === 0) void this.tone(65.41, 0.9, 0.012, 0, 'triangle');
-      this.musicStep += 1;
-    };
-    play();
-    this.musicTimer = window.setInterval(play, 720);
-  }
-
-  stopMusic() {
-    if (this.musicTimer !== null) window.clearInterval(this.musicTimer);
-    this.musicTimer = null;
-  }
-}
-
-function Tile({
-  tile,
-  physicalId,
-  selected,
-  hidden,
-  small,
-  onClick,
-  disabled,
-  title,
-}: {
-  tile: number;
-  physicalId?: number;
-  selected?: boolean;
-  hidden?: boolean;
-  small?: boolean;
-  onClick?: () => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  const label = tileLabel(tile);
-  const glyph = tileGlyph(tile);
-  const Tag = onClick ? 'button' : 'span';
-  return (
-    <Tag
-      className={`game-tile ${label.kind} ${small ? 'is-small' : ''} ${selected ? 'is-selected' : ''} ${hidden ? 'is-hidden' : ''}`}
-      onClick={onClick}
-      disabled={disabled}
-      type={onClick ? 'button' : undefined}
-      title={title ?? (hidden ? '暗牌' : tileText(tile))}
-      aria-label={hidden ? '暗牌' : tileText(tile)}
-      data-id={physicalId}
-    >
-      {hidden ? (
-        <span className="tile-back-mark">雀</span>
-      ) : (
-        <span className="mahjong-symbol" aria-hidden="true">
-          {glyph}
-        </span>
-      )}
-    </Tag>
-  );
-}
 
 function RulesModal({ onClose }: { onClose: () => void }) {
   return (
@@ -668,27 +565,24 @@ function SelectionScreen({
               <p className="warning-text">这 13 张还没有听牌，请调整组合或使用推荐。</p>
             )}
           </div>
-          <div className="selection-actions">
-            <button className="secondary-action" type="button" onClick={onBack}>
-              返回
-            </button>
-            <button className="primary-action" type="button" disabled={!canReady} onClick={onReady}>
-              {waiting ? '等待对手…' : readyLabel} <span>→</span>
-            </button>
-          </div>
+          <GameActionBar>
+            <div className="selection-actions">
+              <button className="secondary-action" type="button" onClick={onBack}>
+                返回
+              </button>
+              <button
+                className="primary-action"
+                type="button"
+                disabled={!canReady}
+                onClick={onReady}
+              >
+                {waiting ? '等待对手…' : readyLabel} <span>→</span>
+              </button>
+            </div>
+          </GameActionBar>
         </aside>
       </section>
     </main>
-  );
-}
-
-function River({ tiles }: { tiles: number[] }) {
-  return (
-    <div className="battle-river">
-      {tiles.map((tile, index) => (
-        <Tile tile={tile} small key={`${tile}-${index}`} />
-      ))}
-    </div>
   );
 }
 
@@ -1326,17 +1220,11 @@ export default function GameClient() {
     await fetchRemote();
   };
 
-  useEffect(() => {
-    if (screen !== 'online' || !credentials) return;
-    const timer = window.setInterval(
-      () =>
-        fetchRemote().catch((error) =>
-          setOnlineError(error instanceof Error ? error.message : '同步失败'),
-        ),
-      1200,
-    );
-    return () => window.clearInterval(timer);
-  }, [screen, credentials, fetchRemote]);
+  useRemotePolling({
+    enabled: screen === 'online' && Boolean(credentials),
+    poll: fetchRemote,
+    onError: (error) => setOnlineError(error instanceof Error ? error.message : '同步失败'),
+  });
 
   const goHome = () => {
     setScreen('home');
