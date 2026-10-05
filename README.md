@@ -5,7 +5,7 @@
 **34 张自选听牌、两立直开局、满贯起胡的策略型二人麻将网页游戏。**
 
 [![CI](https://github.com/glow404/17mah-jong/actions/workflows/ci.yml/badge.svg)](https://github.com/glow404/17mah-jong/actions/workflows/ci.yml)
-[![Rules coverage](https://img.shields.io/badge/rules%20coverage-95.47%25-brightgreen)](#测试与质量门禁)
+[![Rules coverage](https://img.shields.io/badge/rules%20coverage-96.84%25-brightgreen)](#测试与质量门禁)
 [![Release](https://img.shields.io/github/v/release/glow404/17mah-jong?include_prereleases&sort=semver)](https://github.com/glow404/17mah-jong/releases)
 [![License: MIT](https://img.shields.io/github/license/glow404/17mah-jong)](LICENSE)
 
@@ -98,7 +98,7 @@
 - 联机同步采用约 1.2 秒一次的 HTTP 轮询，尚未使用 WebSocket / Durable Objects，也没有完善的断线恢复和回放。
 - 当前只有房间码约战，没有公开匹配、观战、好友、排行榜或持久化战绩。
 - 账号系统尚未提供邮箱验证、找回密码和账号删除流程；公开演示环境不承诺生产级 SLA。
-- 自动化测试目前集中在规则引擎，规则行覆盖率为 95.47%；API、数据库和双浏览器 E2E 测试仍在 [Roadmap](OPEN_SOURCE_ROADMAP.md) 中。
+- 自动化测试目前集中在规则引擎，规则行覆盖率为 96.84%；API、数据库和双浏览器 E2E 测试仍在 [Roadmap](OPEN_SOURCE_ROADMAP.md) 中。
 - Vinext 仍为 beta 依赖，升级 React、Vite 或 Cloudflare 运行时时需要进行完整回归验证。
 
 ## 技术栈
@@ -204,7 +204,7 @@ npm run build          # 生产构建
 npm run ci             # 依次执行以上全部质量检查
 ```
 
-规则引擎当前行覆盖率为 **95.47%**、分支覆盖率为 **90.47%**、函数覆盖率为 **100%**。CI 会在每次推送到 `main` 和针对 `main` 的 Pull Request 上执行同一套质量门禁；规则引擎门槛为 90%，全项目目标为 80%。覆盖率目标集中记录在 [`coverage-targets.json`](coverage-targets.json)。
+规则引擎当前行覆盖率为 **96.84%**、分支覆盖率为 **95.19%**、函数覆盖率为 **100%**。CI 会在每次推送到 `main` 和针对 `main` 的 Pull Request 上执行同一套质量门禁；规则引擎门槛为 90%，全项目目标为 80%。覆盖率目标集中记录在 [`coverage-targets.json`](coverage-targets.json)。
 
 ## 主要目录
 
@@ -222,6 +222,7 @@ worker/                  Cloudflare Worker 入口
 ## Roadmap 与社区
 
 - [开源成熟化 Roadmap](OPEN_SOURCE_ROADMAP.md)：CI、安全、规则测试、实时联机、AI、回放和 v1.0 验收计划。
+- [规则兼容矩阵](docs/RULE_COMPATIBILITY.md)：逐项说明与标准日本麻将/雀魂的相同与不同。
 - [贡献指南](CONTRIBUTING.md)：开发环境、分支、Conventional Commits 和 Pull Request 流程。
 - [Good first issues](https://github.com/glow404/17mah-jong/labels/good%20first%20issue) 与 [Help wanted](https://github.com/glow404/17mah-jong/labels/help%20wanted)：适合首次参与的任务。
 - [安全策略](SECURITY.md)：请按私密渠道报告未修复漏洞，不要创建公开 Issue。
