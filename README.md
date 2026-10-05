@@ -210,9 +210,14 @@ npm run ci             # 依次执行以上全部质量检查
 
 ```text
 app/                     页面、客户端状态与 API Route Handlers
+app/screens/             首页、选牌、牌桌、结算、认证与联机页面
+app/game/                本地电脑对战 reducer 与游戏状态类型
+components/              可复用牌面、弃牌区与操作栏
+hooks/                   联机同步生命周期 Hook
 db/                      D1 访问、认证、房间存储与 Drizzle schema
 drizzle/                 可重复执行的数据库迁移
 lib/mahjong.ts           牌表示、听牌、牌型、番符、计分与振听
+lib/audio.ts             Web Audio 音效与音乐生命周期
 tests/mahjong.test.ts    规则引擎回归测试
 docs/assets/             README 截图与玩法演示
 .github/                 CI、Issue Forms 与 Pull Request 模板
