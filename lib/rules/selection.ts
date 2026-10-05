@@ -1,7 +1,8 @@
 import { countTiles, waitTypes, type Meld } from './hand';
 import { evaluateWin } from './scoring';
 import { doraFromIndicator, sortTiles, tileType } from './tiles';
-import type { PhysicalTileId, ScoreResult, SeatWind, TileType } from './types';
+import { RuleEngineError } from './errors';
+import type { PhysicalTileId, RandomSource, ScoreResult, SeatWind, TileType } from './types';
 
 function physicalSelection(pool: readonly PhysicalTileId[], wantedTypes: readonly TileType[]) {
   const buckets = new Map<TileType, PhysicalTileId[]>();
@@ -26,9 +27,11 @@ export function suggestTenpaiHand(
   pool: readonly PhysicalTileId[],
   indicator: TileType,
   wind: SeatWind,
+  random: RandomSource = Math.random,
 ): PhysicalTileId[] | null {
   const poolCounts = countTiles(pool.map(tileType));
   let best: { types: TileType[]; rank: number } | null = null;
+  let bestTieCount = 0;
   let considered = 0;
   const seen = new Set<string>();
 
@@ -43,16 +46,32 @@ export function suggestTenpaiHand(
     if (!waits.length) return;
     const scores = waits
       .map((tile) => evaluateWin(sorted, tile, indicator, wind))
-      .filter((score): score is ScoreResult => Boolean(score));
+      .filter((score): score is ScoreResult => Boolean(score?.tier));
     const top = scores.sort(
       (a, b) => b.multiplier - a.multiplier || b.han - a.han || b.fu - a.fu,
     )[0];
+    if (!top) return;
+    const handCounts = countTiles(sorted);
+    const ukeire = waits.reduce((total, tile) => total + 4 - handCounts[tile], 0);
     const rank =
       (top?.multiplier ?? 0) * 10000 +
       (top?.han ?? 0) * 100 +
       waits.length * 8 +
+      ukeire +
       sorted.filter((tile) => tile === doraFromIndicator(indicator)).length;
-    if (!best || rank > best.rank) best = { types: sorted, rank };
+    if (!best || rank > best.rank) {
+      best = { types: sorted, rank };
+      bestTieCount = 1;
+    } else if (rank === best.rank) {
+      bestTieCount += 1;
+      const tieRoll = random();
+      if (!Number.isFinite(tieRoll) || tieRoll < 0 || tieRoll >= 1)
+        throw new RuleEngineError(
+          'INVALID_RANDOM_VALUE',
+          'Random source must return a value in [0, 1)',
+        );
+      if (tieRoll < 1 / bestTieCount) best = { types: sorted, rank };
+    }
   };
 
   const search = (allowed: (tile: TileType) => boolean, budget: number) => {

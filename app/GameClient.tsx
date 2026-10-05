@@ -17,42 +17,104 @@ import {
   useState,
 } from 'react';
 import { GameAudio } from '../lib/audio';
-import type { RoomSnapshot, Seat } from '../lib/contracts/mahjong';
+import type { GameResult, RoomSnapshot, Seat } from '../lib/contracts/mahjong';
+import { GAME_PROTOCOL_VERSION } from '../lib/contracts/protocol';
+import type { MatchEvent, MatchEventInput } from '../lib/history/events';
+import { createMatchReplayExport } from '../lib/history/export';
+import { saveLocalMatchHistory } from '../lib/history/local';
 import { isFuriten } from '../lib/rules/furiten';
-import { createWall, sortTiles, tileType } from '../lib/rules/tiles';
+import { createSeededRandom, createWall, sortTiles, tileType } from '../lib/rules/tiles';
 import { suggestTenpaiHand } from '../lib/rules/selection';
+import { aiRandomForTurn, mahjongAi, type AiDifficulty, type AiDiscardDecision } from './game/ai';
+import { emptyAiStats, loadAiStats, recordAiMatch, type AiStats } from './game/aiStats';
 import { localGameReducer } from './game/localGameReducer';
-import { useRemotePolling } from '../hooks/useRemotePolling';
+import { useRemotePolling, type RemoteConnectionStatus } from '../hooks/useRemotePolling';
+import { useAccessibleDialog } from './hooks/useAccessibleDialog';
 import { AuthScreen } from './screens/AuthScreen';
 import type { AuthUser } from './screens/AuthScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { OnlineScreen } from './screens/OnlineScreen';
 import { SelectionScreenPage } from './screens/SelectionScreen';
 import { TableScreen } from './screens/TableScreen';
+import { HistoryScreen } from './screens/HistoryScreen';
+import { OnboardingGuide } from './screens/OnboardingGuide';
+import { RulesEncyclopediaScreen } from './screens/RulesEncyclopediaScreen';
 
-type Screen = 'home' | 'select' | 'playing' | 'online';
+type Screen = 'home' | 'select' | 'playing' | 'online' | 'history' | 'rules';
+const ROOM_SESSION_KEY = '17mah-jong:active-room:v1';
+const ONBOARDING_STORAGE_KEY = '17mah-jong:onboarding-complete:v1';
 interface Deal {
   pools: [number[], number[]];
   suggestions: [number[], number[]];
   indicator: number;
   uraIndicator: number;
+  seed: number;
+}
+
+type WithoutEventMetadata<T> = T extends MatchEventInput
+  ? Omit<T, 'stateVersion' | 'createdAt'>
+  : never;
+type PendingLocalEvent = WithoutEventMetadata<MatchEventInput>;
+
+interface LocalHistorySession {
+  matchId: string;
+  startedAt: number;
+  playStartedAt: number | null;
+  baseScore: number;
+  difficulty: AiDifficulty;
+  seed: number;
+  totalDecisionMs: number;
+  decisions: number;
+  version: number;
+  events: MatchEvent[];
+  saved: boolean;
+}
+
+function orientResultForSeat(result: GameResult, seat: Seat): GameResult {
+  if (seat === 0 || result.kind === 'draw') return result;
+  if (result.kind === 'forfeit')
+    return {
+      ...result,
+      winner: (1 - result.winner) as Seat,
+      loser: (1 - result.loser) as Seat,
+    };
+  return { ...result, winner: (1 - result.winner) as Seat };
 }
 
 const AppContext = createContext<{
   user: AuthUser | null;
   openAuth: () => void;
+  openHistory: () => void;
+  openGuide: () => void;
   logout: () => void;
   soundEnabled: boolean;
   toggleSound: () => void;
+  musicVolume: number;
+  effectsVolume: number;
+  setMusicVolume: (value: number) => void;
+  setEffectsVolume: (value: number) => void;
 }>({
   user: null,
   openAuth: () => undefined,
+  openHistory: () => undefined,
+  openGuide: () => undefined,
   logout: () => undefined,
   soundEnabled: true,
   toggleSound: () => undefined,
+  musicVolume: 0.65,
+  effectsVolume: 0.8,
+  setMusicVolume: () => undefined,
+  setEffectsVolume: () => undefined,
 });
 
-function RulesModal({ onClose }: { onClose: () => void }) {
+function RulesModal({
+  onClose,
+  onEncyclopedia,
+}: {
+  onClose: () => void;
+  onEncyclopedia: () => void;
+}) {
+  const dialogRef = useAccessibleDialog<HTMLElement>(onClose);
   return (
     <div
       className="modal-backdrop"
@@ -63,9 +125,12 @@ function RulesModal({ onClose }: { onClose: () => void }) {
     >
       <section
         className="rules-modal"
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="rules-title"
+        aria-describedby="rules-summary"
+        tabIndex={-1}
       >
         <button className="modal-close" type="button" onClick={onClose} aria-label="关闭规则">
           ×
@@ -74,7 +139,7 @@ function RulesModal({ onClose }: { onClose: () => void }) {
           <span /> 对局规则
         </p>
         <h2 id="rules-title">17 巡定胜负</h2>
-        <div className="rules-grid">
+        <div id="rules-summary" className="rules-grid">
           <article>
             <strong>01</strong>
             <div>
@@ -122,9 +187,14 @@ function RulesModal({ onClose }: { onClose: () => void }) {
             </div>
           </article>
         </div>
-        <button className="primary-action wide" type="button" onClick={onClose}>
-          明白了
-        </button>
+        <div className="rules-modal-actions">
+          <button className="secondary-action" type="button" onClick={onEncyclopedia}>
+            打开规则百科
+          </button>
+          <button className="primary-action" type="button" onClick={onClose}>
+            明白了
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -139,7 +209,19 @@ function TopBar({
   onRules: () => void;
   roomCode?: string;
 }) {
-  const { user, openAuth, logout, soundEnabled, toggleSound } = useContext(AppContext);
+  const {
+    user,
+    openAuth,
+    openHistory,
+    openGuide,
+    logout,
+    soundEnabled,
+    toggleSound,
+    musicVolume,
+    effectsVolume,
+    setMusicVolume,
+    setEffectsVolume,
+  } = useContext(AppContext);
   const [copied, setCopied] = useState(false);
   const copyCode = async () => {
     if (!roomCode) return;
@@ -159,20 +241,64 @@ function TopBar({
             {copied ? '已复制' : `房间 ${roomCode} · 复制`}
           </button>
         )}
-        <button className="sound-button" type="button" onClick={toggleSound}>
+        <button
+          className="sound-button"
+          type="button"
+          onClick={toggleSound}
+          aria-pressed={soundEnabled}
+          aria-label={soundEnabled ? '关闭声音' : '开启声音'}
+          aria-keyshortcuts="M"
+        >
           {soundEnabled ? '♪ 音乐开启' : '音乐关闭'}
         </button>
+        <details className="sound-settings">
+          <summary aria-label="音量设置">音量设置</summary>
+          <div className="sound-settings-panel">
+            <label>
+              背景音乐
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={musicVolume}
+                aria-label="背景音乐音量"
+                onChange={(event) => setMusicVolume(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              游戏音效
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={effectsVolume}
+                aria-label="游戏音效音量"
+                onChange={(event) => setEffectsVolume(Number(event.target.value))}
+              />
+            </label>
+          </div>
+        </details>
+        <button className="rules-link" type="button" onClick={openHistory}>
+          对局历史
+        </button>
         {user ? (
-          <button className="account-button" type="button" onClick={logout} title="点击退出登录">
-            {user.email}
-          </button>
+          <>
+            <button className="account-button" type="button" onClick={logout} title="点击退出登录">
+              {user.email}
+            </button>
+          </>
         ) : (
           <button className="account-button" type="button" onClick={openAuth}>
             邮箱登录
           </button>
         )}
-        <button className="rules-link" type="button" onClick={onRules}>
-          规则说明 <span>↗</span>
+        <button className="rules-link" type="button" onClick={onRules} aria-keyshortcuts="Shift+/">
+          规则说明 <span aria-hidden="true">↗</span>
+        </button>
+        <button className="rules-link" type="button" onClick={openGuide}>
+          新手引导
         </button>
       </div>
     </header>
@@ -182,30 +308,146 @@ function TopBar({
 export default function GameClient() {
   const [screen, setScreen] = useState<Screen>('home');
   const [baseScore, setBaseScore] = useState(5000);
+  const [aiDifficulty, setAiDifficulty] = useState<AiDifficulty>('normal');
+  const [aiStats, setAiStats] = useState<AiStats>(() => emptyAiStats());
   const [showRules, setShowRules] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [deal, setDeal] = useState<Deal | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [game, dispatchGame] = useReducer(localGameReducer, null);
   const [remote, setRemote] = useState<RoomSnapshot | null>(null);
   const [credentials, setCredentials] = useState<{ code: string; token: string } | null>(null);
+  const [roomStorageReady, setRoomStorageReady] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<RemoteConnectionStatus>('connecting');
   const [onlineBusy, setOnlineBusy] = useState(false);
   const [onlineError, setOnlineError] = useState('');
+  const [remoteActionBusy, setRemoteActionBusy] = useState(false);
   const [remoteSelected, setRemoteSelected] = useState<number[]>([]);
   const [localDiscard, setLocalDiscard] = useState<number | null>(null);
+  const [aiLastDecision, setAiLastDecision] = useState<AiDiscardDecision | null>(null);
   const [remoteDiscard, setRemoteDiscard] = useState<number | null>(null);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [showAuth, setShowAuth] = useState(false);
   const [afterAuthOnline, setAfterAuthOnline] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [musicVolume, setMusicVolume] = useState(0.65);
+  const [effectsVolume, setEffectsVolume] = useState(0.8);
+  const [soundPreferencesReady, setSoundPreferencesReady] = useState(false);
   const audioRef = useRef<GameAudio | null>(null);
   const localSoundCount = useRef(0);
   const remoteSoundCount = useRef(0);
   const resultSoundKey = useRef('');
+  const remoteActionLock = useRef(false);
+  const localHistory = useRef<LocalHistorySession | null>(null);
+  const historyReturnScreen = useRef<Screen>('home');
+  const rulesReturnScreen = useRef<Screen>('home');
+
+  useEffect(() => {
+    document.documentElement.dataset.appReady = 'true';
+    return () => {
+      delete document.documentElement.dataset.appReady;
+    };
+  }, []);
+
+  const appendLocalEvents = useCallback((pendingEvents: readonly PendingLocalEvent[]) => {
+    const session = localHistory.current;
+    if (!session || session.saved || pendingEvents.length === 0) return;
+    const version = session.version + 1;
+    const createdAt = Date.now();
+    session.version = version;
+    session.events.push(
+      ...pendingEvents.map(
+        (event, index) =>
+          ({
+            ...event,
+            sequence: session.events.length + index + 1,
+            stateVersion: version,
+            createdAt,
+          }) as MatchEvent,
+      ),
+    );
+  }, []);
+
+  const finishLocalHistory = useCallback((result: GameResult) => {
+    const session = localHistory.current;
+    if (!session || session.saved) return;
+    session.saved = true;
+    saveLocalMatchHistory(
+      createMatchReplayExport(
+        {
+          matchId: session.matchId,
+          startedAt: session.startedAt,
+          finishedAt: Date.now(),
+          baseScore: session.baseScore,
+          viewerSeat: 0,
+          result,
+        },
+        session.events,
+      ),
+    );
+    setAiStats(
+      recordAiMatch(
+        session.difficulty,
+        result,
+        Date.now() - (session.playStartedAt ?? session.startedAt),
+        session.totalDecisionMs,
+        session.decisions,
+      ),
+    );
+  }, []);
 
   const ensureAudio = useCallback(() => {
     audioRef.current ??= new GameAudio();
+    audioRef.current.setMuted(!soundEnabled);
+    audioRef.current.setVolumes(musicVolume, effectsVolume);
     if (soundEnabled) void audioRef.current.ensure();
-  }, [soundEnabled]);
+  }, [effectsVolume, musicVolume, soundEnabled]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        if (localStorage.getItem(ONBOARDING_STORAGE_KEY) !== 'complete') setShowOnboarding(true);
+      } catch {
+        setShowOnboarding(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const enabled = localStorage.getItem('17mah-jong:sound-enabled:v1');
+        const storedMusic = localStorage.getItem('17mah-jong:music-volume:v1');
+        const storedEffects = localStorage.getItem('17mah-jong:effects-volume:v1');
+        const music = storedMusic === null ? Number.NaN : Number(storedMusic);
+        const effects = storedEffects === null ? Number.NaN : Number(storedEffects);
+        if (enabled === 'false') setSoundEnabled(false);
+        if (Number.isFinite(music) && music >= 0 && music <= 1) setMusicVolume(music);
+        if (Number.isFinite(effects) && effects >= 0 && effects <= 1) setEffectsVolume(effects);
+      } catch {
+        // Storage may be disabled; keep accessible in-memory controls.
+      } finally {
+        setSoundPreferencesReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!soundPreferencesReady) return;
+    try {
+      localStorage.setItem('17mah-jong:sound-enabled:v1', String(soundEnabled));
+      localStorage.setItem('17mah-jong:music-volume:v1', String(musicVolume));
+      localStorage.setItem('17mah-jong:effects-volume:v1', String(effectsVolume));
+    } catch {
+      // Audio preferences still apply for the current session when storage is unavailable.
+    }
+    audioRef.current?.setMuted(!soundEnabled);
+    audioRef.current?.setVolumes(musicVolume, effectsVolume);
+  }, [effectsVolume, musicVolume, soundEnabled, soundPreferencesReady]);
+
+  useEffect(() => () => audioRef.current?.dispose(), []);
 
   useEffect(() => {
     fetch('/api/auth', { cache: 'no-store' })
@@ -217,32 +459,134 @@ export default function GameClient() {
       .catch(() => undefined);
   }, []);
 
-  const makeDeal = useCallback(() => {
-    for (let attempt = 0; attempt < 18; attempt += 1) {
-      const wall = createWall(Math.random);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = sessionStorage.getItem(ROOM_SESSION_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as { code?: unknown; token?: unknown };
+          if (
+            typeof parsed.code === 'string' &&
+            /^[A-Z0-9]{6}$/i.test(parsed.code) &&
+            typeof parsed.token === 'string' &&
+            parsed.token.length >= 16 &&
+            parsed.token.length <= 128
+          ) {
+            setCredentials({ code: parsed.code.toUpperCase(), token: parsed.token });
+            setScreen('online');
+          } else sessionStorage.removeItem(ROOM_SESSION_KEY);
+        }
+      } catch {
+        sessionStorage.removeItem(ROOM_SESSION_KEY);
+      } finally {
+        setRoomStorageReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!roomStorageReady) return;
+    if (credentials) sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(credentials));
+    else sessionStorage.removeItem(ROOM_SESSION_KEY);
+  }, [credentials, roomStorageReady]);
+
+  const makeDeal = useCallback((difficulty: AiDifficulty) => {
+    const seed = crypto.getRandomValues(new Uint32Array(1))[0];
+    const random = createSeededRandom(seed);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const wall = createWall(random);
       const pools: [number[], number[]] = [wall.slice(0, 34), wall.slice(34, 68)];
       const indicator = tileType(wall[68]);
-      const east = suggestTenpaiHand(pools[0], indicator, 'east');
-      const west = suggestTenpaiHand(pools[1], indicator, 'west');
-      if (east && west)
+      const east = suggestTenpaiHand(pools[0], indicator, 'east', random);
+      if (!east) continue;
+      const west = mahjongAi[difficulty].selectHand(pools[1], indicator, 'west', random)?.hand;
+      if (west)
         return {
           pools,
           suggestions: [east, west] as [number[], number[]],
           indicator,
           uraIndicator: tileType(wall[69]),
+          seed,
         };
     }
-    throw new Error('未能生成可听牌的牌池，请重试');
+
+    // Bound the combinatorial search on the UI thread. If two random deals
+    // do not yield two qualifying hands, put a randomized known tenpai in each
+    // 34-tile pool so local play can still start immediately.
+    const available = createWall(random);
+    const suits = [0, 1, 2];
+    const eastSuit = Math.floor(random() * suits.length);
+    const westSuit = suits.find((suit) => suit !== eastSuit && suit !== (eastSuit + 1) % 3)!;
+    const honorPair = 27 + Math.floor(random() * 7);
+    const handTemplates = [
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, 1, 1, 5, 6],
+      [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6],
+      [0, 1, 2, 3, 4, 5, 6, 7, 8, honorPair, honorPair, 5, 6],
+    ];
+    const eastTemplate = Math.floor(random() * handTemplates.length);
+    const westTemplate = (eastTemplate + 1 + Math.floor(random() * 2)) % handTemplates.length;
+    const takeTile = (type: number) => {
+      const index = available.findIndex((id) => tileType(id) === type);
+      if (index < 0) throw new Error('牌墙中缺少预期牌种');
+      return available.splice(index, 1)[0];
+    };
+    const prepareHand = (suit: number, template: readonly number[]) =>
+      template.map((tile) => takeTile(tile >= 27 ? tile : suit * 9 + tile));
+    const east = prepareHand(eastSuit, handTemplates[eastTemplate]);
+    const west = prepareHand(westSuit, handTemplates[westTemplate]);
+    const pools: [number[], number[]] = [
+      [...east, ...available.splice(0, 21)],
+      [...west, ...available.splice(0, 21)],
+    ];
+    return {
+      pools,
+      suggestions: [east, west] as [number[], number[]],
+      indicator: tileType(available[0]),
+      uraIndicator: tileType(available[1]),
+      seed,
+    };
   }, []);
 
   const startCpu = useCallback(() => {
-    const nextDeal = makeDeal();
+    const nextDeal = makeDeal(aiDifficulty);
+    const startedAt = Date.now();
+    const matchId = crypto.randomUUID().replaceAll('-', '');
+    localHistory.current = {
+      matchId,
+      startedAt,
+      playStartedAt: null,
+      baseScore,
+      difficulty: aiDifficulty,
+      seed: nextDeal.seed,
+      totalDecisionMs: 0,
+      decisions: 0,
+      version: 1,
+      saved: false,
+      events: [
+        {
+          sequence: 1,
+          type: 'match.created',
+          seat: 0,
+          stateVersion: 1,
+          createdAt: startedAt,
+          payload: {
+            baseScore,
+            pools: [nextDeal.pools[0].slice(), nextDeal.pools[1].slice()],
+            indicator: nextDeal.indicator,
+            uraIndicator: nextDeal.uraIndicator,
+            opponentJoined: true,
+          },
+        },
+      ],
+    };
     setDeal(nextDeal);
     setSelected([]);
     dispatchGame({ type: 'reset' });
     setLocalDiscard(null);
+    setAiLastDecision(null);
     setScreen('select');
-  }, [makeDeal]);
+  }, [aiDifficulty, baseScore, makeDeal]);
 
   const toggleSelected = (id: number, setter = setSelected) =>
     setter((current) =>
@@ -255,6 +599,7 @@ export default function GameClient() {
 
   const confirmLocalHand = () => {
     if (!deal || selected.length !== 13) return;
+    if (localHistory.current) localHistory.current.playStartedAt = Date.now();
     const selectedSet = new Set(selected);
     const aiSet = new Set(deal.suggestions[1]);
     dispatchGame({
@@ -280,6 +625,20 @@ export default function GameClient() {
         result: null,
       },
     });
+    appendLocalEvents([
+      {
+        type: 'hand.selected',
+        seat: 0,
+        payload: { selectedIds: selected.slice(), turnDeadlineAt: null },
+      },
+    ]);
+    appendLocalEvents([
+      {
+        type: 'hand.selected',
+        seat: 1,
+        payload: { selectedIds: deal.suggestions[1].slice(), turnDeadlineAt: null },
+      },
+    ]);
     setLocalDiscard(null);
     ensureAudio();
     setScreen('playing');
@@ -287,44 +646,145 @@ export default function GameClient() {
 
   const performLocalDiscard = useCallback(
     (seat: Seat, requestedId?: number) => {
-      const physicalId =
-        seat === 0
-          ? requestedId
-          : game?.reserves[seat][Math.floor(Math.random() * game.reserves[seat].length)];
-      if (physicalId !== undefined) dispatchGame({ type: 'discard', seat, physicalId });
+      let physicalId = requestedId;
+      if (seat === 1 && game) {
+        const session = localHistory.current;
+        const difficulty = session?.difficulty ?? aiDifficulty;
+        const decision = mahjongAi[difficulty].chooseDiscard(
+          {
+            hand: game.hands[1],
+            reserves: game.reserves[1],
+            ownDiscards: game.discards[1],
+            opponentDiscards: game.discards[0],
+            temporaryFuriten: game.temporaryFuriten[1],
+            indicator: game.indicator,
+            wind: 'west',
+          },
+          aiRandomForTurn(session?.seed ?? 1, game.counts[1]),
+          20,
+        );
+        physicalId = decision.physicalId;
+        setAiLastDecision(decision);
+        if (session) {
+          session.totalDecisionMs += decision.elapsedMs;
+          session.decisions += 1;
+        }
+      }
+      if (physicalId !== undefined && game) {
+        const action = { type: 'discard' as const, seat, physicalId };
+        const next = localGameReducer(game, action);
+        if (next !== game) {
+          dispatchGame(action);
+          const events: PendingLocalEvent[] = [
+            {
+              type: 'tile.discarded',
+              seat,
+              payload: { physicalTileId: physicalId, turnDeadlineAt: null },
+            },
+          ];
+          if (next?.result?.kind === 'draw')
+            events.push({
+              type: 'hand.drawn',
+              seat: null,
+              payload: { reason: 'seventeen-discard' },
+            });
+          appendLocalEvents(events);
+          if (next?.result) finishLocalHistory(next.result);
+        }
+      }
       if (seat === 0) setLocalDiscard(null);
     },
-    [game],
+    [aiDifficulty, appendLocalEvents, finishLocalHistory, game],
+  );
+
+  const resolveLocalRon = useCallback(
+    (seat: Seat) => {
+      if (!game) return;
+      const action =
+        seat === 0 ? { type: 'ron' as const, baseScore } : { type: 'cpu-ron' as const, baseScore };
+      const next = localGameReducer(game, action);
+      if (next === game) return;
+      dispatchGame(action);
+      appendLocalEvents([{ type: 'ron.claimed', seat, payload: {} }]);
+      if (next?.result) finishLocalHistory(next.result);
+    },
+    [appendLocalEvents, baseScore, finishLocalHistory, game],
   );
 
   useEffect(() => {
     if (screen !== 'playing' || !game || game.result) return;
     if (game.pendingRon === 1 && game.pendingScore) {
-      const timer = window.setTimeout(() => dispatchGame({ type: 'cpu-ron', baseScore }), 850);
+      const timer = window.setTimeout(() => resolveLocalRon(1), 850);
       return () => window.clearTimeout(timer);
     }
     if (game.turn === 1 && game.pendingRon === null) {
       const timer = window.setTimeout(() => performLocalDiscard(1), 850);
       return () => window.clearTimeout(timer);
     }
-  }, [screen, game, baseScore, performLocalDiscard]);
+  }, [screen, game, performLocalDiscard, resolveLocalRon]);
 
-  const localPass = () => dispatchGame({ type: 'pass' });
-  const localRon = () => dispatchGame({ type: 'ron', baseScore });
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAiStats(loadAiStats()), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const localPass = useCallback(() => {
+    if (!game) return;
+    const next = localGameReducer(game, { type: 'pass' });
+    if (next === game) return;
+    dispatchGame({ type: 'pass' });
+    const events: PendingLocalEvent[] = [
+      { type: 'ron.declined', seat: 0, payload: { turnDeadlineAt: null } },
+    ];
+    if (next?.result?.kind === 'draw')
+      events.push({ type: 'hand.drawn', seat: null, payload: { reason: 'seventeen-discard' } });
+    appendLocalEvents(events);
+    if (next?.result) finishLocalHistory(next.result);
+  }, [appendLocalEvents, finishLocalHistory, game]);
+  const localRon = useCallback(() => resolveLocalRon(0), [resolveLocalRon]);
 
   const fetchRemote = useCallback(
     async (creds = credentials) => {
       if (!creds) return;
       const response = await fetch(`/api/rooms?code=${creds.code}&token=${creds.token}`, {
         cache: 'no-store',
+        headers: { 'X-Game-Protocol': String(GAME_PROTOCOL_VERSION) },
       });
       const data = (await response.json()) as RoomSnapshot & { error?: string };
-      if (!response.ok) throw new Error(data.error || '房间同步失败');
-      setRemote(data);
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 410) {
+          setCredentials(null);
+          setRemote(null);
+        }
+        if (response.status === 401) {
+          setAuthUser(null);
+          setShowAuth(true);
+        }
+        throw new Error(data.error || '房间同步失败');
+      }
+      setRemote((current) => (current && current.version > data.version ? current : data));
+      setOnlineError('');
       if (data.ownPool && !remoteSelected.length && data.ownReady) setRemoteSelected([]);
+      return data;
     },
     [credentials, remoteSelected.length],
   );
+
+  const heartbeatRemote = useCallback(async () => {
+    if (!credentials) return;
+    const response = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+      },
+      body: JSON.stringify({ ...credentials, action: 'heartbeat' }),
+    });
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new Error(data.error || '联机心跳失败');
+    }
+  }, [credentials]);
 
   const createRoom = async () => {
     setOnlineBusy(true);
@@ -332,7 +792,10 @@ export default function GameClient() {
     try {
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+        },
         body: JSON.stringify({ action: 'create', baseScore }),
       });
       const data = (await response.json()) as { code?: string; token?: string; error?: string };
@@ -354,7 +817,10 @@ export default function GameClient() {
     try {
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+        },
         body: JSON.stringify({ action: 'join', code }),
       });
       const data = (await response.json()) as { code?: string; token?: string; error?: string };
@@ -370,32 +836,93 @@ export default function GameClient() {
     }
   };
 
-  const remoteAction = async (action: string, payload: Record<string, unknown> = {}) => {
-    if (!credentials) return;
-    setOnlineError('');
-    const response = await fetch('/api/rooms', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...credentials, action, ...payload }),
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      if (response.status === 401) {
-        setAuthUser(null);
-        setShowAuth(true);
+  const remoteAction = useCallback(
+    async (action: string, payload: Record<string, unknown> = {}) => {
+      if (!credentials || !remote || remoteActionLock.current) return;
+      remoteActionLock.current = true;
+      setRemoteActionBusy(true);
+      setOnlineError('');
+      const actionId = crypto.randomUUID();
+      try {
+        let actionVersion = remote.version;
+        for (let conflictAttempt = 0; conflictAttempt < 2; conflictAttempt += 1) {
+          const requestBody = JSON.stringify({
+            ...credentials,
+            action,
+            actionId,
+            version: actionVersion,
+            ...payload,
+          });
+          let response: Response | null = null;
+          let lastError: unknown;
+          for (let networkAttempt = 0; networkAttempt < 2; networkAttempt += 1) {
+            try {
+              response = await fetch('/api/rooms', {
+                method: 'PATCH',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+                },
+                body: requestBody,
+              });
+              if (response.status < 500 || networkAttempt === 1) break;
+            } catch (error) {
+              lastError = error;
+              if (networkAttempt === 1) throw error;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 250));
+          }
+          if (!response) throw lastError ?? new Error('网络请求失败');
+          const data = (await response.json()) as RoomSnapshot & { error?: string };
+          if (!response.ok) {
+            if (response.status === 401) {
+              setAuthUser(null);
+              setShowAuth(true);
+            }
+            if (response.status === 409 && conflictAttempt === 0) {
+              const latest = await fetchRemote();
+              if (latest && latest.phase !== 'finished') {
+                actionVersion = latest.version;
+                continue;
+              }
+            }
+            setOnlineError(data.error || '操作失败，请重试');
+            return;
+          }
+          setRemote((current) => (current && current.version > data.version ? current : data));
+          if (action === 'discard') setRemoteDiscard(null);
+          return;
+        }
+      } catch (error) {
+        setOnlineError(error instanceof Error ? error.message : '操作失败，请检查网络后重试');
+      } finally {
+        remoteActionLock.current = false;
+        setRemoteActionBusy(false);
       }
-      setOnlineError(data.error || '操作失败，请重试');
-      return;
-    }
-    if (action === 'discard') setRemoteDiscard(null);
-    await fetchRemote();
-  };
+    },
+    [credentials, fetchRemote, remote],
+  );
+
+  const onRemotePollError = useCallback((error: unknown) => {
+    setOnlineError(error instanceof Error ? error.message : '同步失败');
+  }, []);
 
   useRemotePolling({
     enabled: screen === 'online' && Boolean(credentials),
+    heartbeat: heartbeatRemote,
     poll: fetchRemote,
-    onError: (error) => setOnlineError(error instanceof Error ? error.message : '同步失败'),
+    onError: onRemotePollError,
+    onConnectionChange: setConnectionStatus,
   });
+
+  const connectionMessage =
+    !credentials || connectionStatus === 'connected'
+      ? undefined
+      : connectionStatus === 'offline'
+        ? '网络已断开，恢复连接后将自动同步。'
+        : connectionStatus === 'reconnecting'
+          ? '同步暂时中断，正在自动重连…'
+          : '正在恢复联机房间…';
 
   const goHome = () => {
     setScreen('home');
@@ -403,10 +930,29 @@ export default function GameClient() {
     setDeal(null);
     setRemote(null);
     setCredentials(null);
+    sessionStorage.removeItem(ROOM_SESSION_KEY);
     setOnlineError('');
     setLocalDiscard(null);
     setRemoteDiscard(null);
   };
+  const openHistory = () => {
+    if (screen !== 'history') historyReturnScreen.current = screen;
+    setScreen('history');
+  };
+  const openEncyclopedia = useCallback(() => {
+    rulesReturnScreen.current = screen === 'rules' ? rulesReturnScreen.current : screen;
+    setShowRules(false);
+    setScreen('rules');
+  }, [screen]);
+  const closeOnboarding = () => {
+    setShowOnboarding(false);
+    try {
+      localStorage.setItem(ONBOARDING_STORAGE_KEY, 'complete');
+    } catch {
+      // The guide can still be dismissed when storage is unavailable.
+    }
+  };
+  const openGuide = () => setShowOnboarding(true);
   const remoteReady = async () => {
     if (remoteSelected.length === 13) {
       ensureAudio();
@@ -441,7 +987,7 @@ export default function GameClient() {
       body: JSON.stringify({ action: 'logout' }),
     });
     setAuthUser(null);
-    if (screen === 'online') goHome();
+    if (screen === 'online' || screen === 'history') goHome();
   };
 
   useEffect(() => {
@@ -475,23 +1021,96 @@ export default function GameClient() {
     resultSoundKey.current = key;
   }, [game?.result, remote?.result, screen, soundEnabled]);
 
-  const toggleSound = () => {
-    if (soundEnabled) {
-      audioRef.current?.stopMusic();
-      setSoundEnabled(false);
-    } else {
-      audioRef.current ??= new GameAudio();
-      void audioRef.current.ensure();
-      setSoundEnabled(true);
-    }
-  };
+  const toggleSound = useCallback(() => {
+    const nextEnabled = !soundEnabled;
+    audioRef.current ??= new GameAudio();
+    audioRef.current.setVolumes(musicVolume, effectsVolume);
+    audioRef.current.setMuted(!nextEnabled);
+    if (nextEnabled) void audioRef.current.ensure();
+    setSoundEnabled(nextEnabled);
+  }, [effectsVolume, musicVolume, soundEnabled]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest('input, textarea, select, [contenteditable="true"]')
+      )
+        return;
+      if (showOnboarding || showRules || showAuth) return;
+      if (event.key.toLowerCase() === 'm') {
+        event.preventDefault();
+        toggleSound();
+      } else if (event.key === '?' || (event.shiftKey && event.key === '/')) {
+        event.preventDefault();
+        openEncyclopedia();
+      } else if (event.key.toLowerCase() === 'r') {
+        if (screen === 'playing' && game?.pendingRon === 0) {
+          event.preventDefault();
+          localRon();
+        } else if (screen === 'online' && remote?.canRon) {
+          event.preventDefault();
+          void remoteAction('ron');
+        }
+      } else if (event.key.toLowerCase() === 'p') {
+        if (screen === 'playing' && game?.pendingRon === 0) {
+          event.preventDefault();
+          localPass();
+        } else if (screen === 'online' && remote?.canRon) {
+          event.preventDefault();
+          void remoteAction('pass');
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [
+    game?.pendingRon,
+    localPass,
+    localRon,
+    openEncyclopedia,
+    remote?.canRon,
+    remoteAction,
+    screen,
+    showAuth,
+    showOnboarding,
+    showRules,
+    toggleSound,
+  ]);
 
   const content = (() => {
+    if (screen === 'rules')
+      return (
+        <RulesEncyclopediaScreen
+          onBack={() => setScreen(rulesReturnScreen.current)}
+          header={
+            <TopBar
+              onHome={() => setScreen(rulesReturnScreen.current)}
+              onRules={() => setShowRules(true)}
+            />
+          }
+        />
+      );
+    if (screen === 'history')
+      return (
+        <HistoryScreen
+          onBack={() => setScreen(historyReturnScreen.current)}
+          onLogin={() => {
+            setAfterAuthOnline(false);
+            setShowAuth(true);
+          }}
+          header={<TopBar onHome={goHome} onRules={() => setShowRules(true)} />}
+        />
+      );
     if (screen === 'home')
       return (
         <HomeScreen
           baseScore={baseScore}
           setBaseScore={setBaseScore}
+          aiDifficulty={aiDifficulty}
+          setAiDifficulty={setAiDifficulty}
+          aiStats={aiStats}
           onCpu={startCpu}
           onOnline={openOnline}
           header={<TopBar onRules={() => setShowRules(true)} />}
@@ -531,6 +1150,8 @@ export default function GameClient() {
           furiten={furiten}
           result={game.result}
           baseScore={baseScore}
+          aiInsight={aiLastDecision}
+          onHistory={openHistory}
           onSelectDiscard={setLocalDiscard}
           onDiscard={(id) => performLocalDiscard(0, id)}
           onRon={localRon}
@@ -550,6 +1171,7 @@ export default function GameClient() {
           onJoin={joinRoom}
           busy={onlineBusy}
           error={onlineError}
+          connectionMessage={connectionMessage}
           header={<TopBar onHome={goHome} onRules={() => setShowRules(true)} />}
         />
       );
@@ -574,6 +1196,7 @@ export default function GameClient() {
           }
           readyLabel="确认手牌"
           waiting={remote.ownReady}
+          connectionMessage={connectionMessage}
           onToggle={(id) => toggleSelected(id, setRemoteSelected)}
           onRecommend={remoteSuggest}
           onReady={remoteReady}
@@ -600,31 +1223,26 @@ export default function GameClient() {
             opponentName="联机牌友"
             pendingRon={remote.canRon}
             pendingScore={remote.pendingScore}
+            actionBusy={remoteActionBusy}
+            turnDeadlineAt={remote.turnDeadlineAt}
+            canSurrender={remote.opponentJoined && remote.phase === 'playing'}
             furiten={remote.permanentFuriten || remote.temporaryFuriten}
-            result={
-              remote.result
-                ? remote.seat === 0
-                  ? remote.result
-                  : {
-                      ...remote.result,
-                      winner:
-                        remote.result.winner === undefined
-                          ? undefined
-                          : ((1 - remote.result.winner) as Seat),
-                    }
-                : null
-            }
+            result={remote.result ? orientResultForSeat(remote.result, remote.seat) : null}
             baseScore={remote.baseScore}
+            onHistory={openHistory}
             onSelectDiscard={setRemoteDiscard}
             onDiscard={(id) => remoteAction('discard', { tileId: id })}
             onRon={() => remoteAction('ron')}
             onPass={() => remoteAction('pass')}
+            onSurrender={() => {
+              if (window.confirm('确定要认输并结束本局吗？')) void remoteAction('surrender');
+            }}
             onAgain={goHome}
             onHome={goHome}
             header={
               <TopBar onHome={goHome} onRules={() => setShowRules(true)} roomCode={remote.code} />
             }
-            waitingText={onlineError || undefined}
+            waitingText={onlineError || connectionMessage}
           />
         </div>
       );
@@ -640,13 +1258,30 @@ export default function GameClient() {
           setAfterAuthOnline(false);
           setShowAuth(true);
         },
+        openHistory,
+        openGuide,
         logout,
         soundEnabled,
         toggleSound,
+        musicVolume,
+        effectsVolume,
+        setMusicVolume,
+        setEffectsVolume,
       }}
     >
       {content}
-      {showRules && <RulesModal onClose={() => setShowRules(false)} />}
+      {showRules && (
+        <RulesModal onClose={() => setShowRules(false)} onEncyclopedia={openEncyclopedia} />
+      )}
+      {showOnboarding && (
+        <OnboardingGuide
+          onClose={closeOnboarding}
+          onRules={() => {
+            closeOnboarding();
+            openEncyclopedia();
+          }}
+        />
+      )}
       {showAuth && (
         <AuthScreen
           onClose={() => {

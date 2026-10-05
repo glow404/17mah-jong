@@ -8,6 +8,17 @@ function url(path: string) {
   return new URL(path, baseUrl);
 }
 
+test(
+  'health endpoint verifies D1 readiness and returns a request ID',
+  { skip: !baseUrl },
+  async () => {
+    const response = await fetch(url('/api/health'));
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('x-request-id') ?? '', /^[\da-f-]{36}$/i);
+    assert.deepEqual(await response.json(), { status: 'ok' });
+  },
+);
+
 async function auth(action: string, email: string, secret = password, cookie?: string) {
   return fetch(url('/api/auth'), {
     method: 'POST',

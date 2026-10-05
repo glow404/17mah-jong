@@ -25,15 +25,21 @@ export interface ScoreResult {
 /** 对局座位；0 为庄家东家，1 为闲家西家。 */
 export type Seat = 0 | 1;
 
-/** 一局对战的公开结算结果。 */
-export interface GameResult {
-  kind: 'ron' | 'draw';
-  winner?: Seat;
-  score?: ScoreResult;
-  payment?: number;
-  winnerHand?: TileType[];
-  uraIndicator?: TileType;
-}
+/** 认输、操作超时或掉线后由服务端判负的原因。 */
+export type ForfeitReason = 'resigned' | 'turn-timeout' | 'disconnect';
+
+/** 一局对战的公开、可判别结算结果。 */
+export type GameResult =
+  | {
+      kind: 'ron';
+      winner: Seat;
+      score: ScoreResult;
+      payment: number;
+      winnerHand?: TileType[];
+      uraIndicator?: TileType;
+    }
+  | { kind: 'draw'; reason?: 'both-disconnected' }
+  | { kind: 'forfeit'; winner: Seat; loser: Seat; reason: ForfeitReason };
 
 /** 联机 API 返回给当前座位的可见房间快照，不包含对手隐藏手牌。 */
 export interface RoomSnapshot {
@@ -60,4 +66,5 @@ export interface RoomSnapshot {
   lastDiscard: { seat: Seat; tile: TileType } | null;
   result: GameResult | null;
   version: number;
+  turnDeadlineAt?: number | null;
 }

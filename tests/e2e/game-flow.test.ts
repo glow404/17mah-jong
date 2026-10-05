@@ -16,7 +16,10 @@ type RoomSnapshot = {
   result?: { kind: string } | null;
   seat: 0 | 1;
   turn: 0 | 1;
+  version: number;
 };
+
+const observedVersions = new Map<string, number>();
 
 async function register(email: string): Promise<{ cookie: string; user: { email: string } }> {
   const response = await fetch(new URL('/api/auth', baseUrl), {
@@ -37,6 +40,16 @@ async function roomRequest(
   method: 'GET' | 'PATCH',
   body?: Record<string, unknown>,
 ): Promise<RoomSnapshot> {
+  let payload: Record<string, unknown> | undefined = body ? { ...credentials, ...body } : undefined;
+  if (method === 'PATCH' && payload) {
+    let version = observedVersions.get(credentials.token);
+    if (version === undefined) version = (await roomRequest(credentials, 'GET')).version;
+    payload = {
+      ...payload,
+      version: payload.version ?? version,
+      actionId: payload.actionId ?? crypto.randomUUID(),
+    };
+  }
   const path =
     method === 'GET'
       ? `/api/rooms?code=${credentials.code}&token=${credentials.token}`
@@ -45,14 +58,17 @@ async function roomRequest(
     method,
     headers: {
       cookie: credentials.cookie,
+      'X-Game-Protocol': '2',
       ...(body ? { 'content-type': 'application/json' } : {}),
     },
-    ...(body ? { body: JSON.stringify({ ...credentials, ...body }) } : {}),
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
   });
   if (!response.ok) {
     assert.fail(`${method} room request failed: ${await response.text()}`);
   }
-  return (await response.json()) as RoomSnapshot;
+  const snapshot = (await response.json()) as RoomSnapshot;
+  observedVersions.set(credentials.token, snapshot.version);
+  return snapshot;
 }
 
 test(
@@ -65,7 +81,11 @@ test(
 
     const create = await fetch(new URL('/api/rooms', baseUrl), {
       method: 'POST',
-      headers: { cookie: first.cookie, 'content-type': 'application/json' },
+      headers: {
+        cookie: first.cookie,
+        'content-type': 'application/json',
+        'X-Game-Protocol': '2',
+      },
       body: JSON.stringify({ action: 'create', baseScore: 1000 }),
     });
     if (create.status !== 201) {
@@ -76,7 +96,11 @@ test(
 
     const join = await fetch(new URL('/api/rooms', baseUrl), {
       method: 'POST',
-      headers: { cookie: second.cookie, 'content-type': 'application/json' },
+      headers: {
+        cookie: second.cookie,
+        'content-type': 'application/json',
+        'X-Game-Protocol': '2',
+      },
       body: JSON.stringify({ action: 'join', code: created.code }),
     });
     if (join.status !== 200) {
@@ -105,7 +129,12 @@ test(
       assert.ok(actorState.ownRemaining?.length);
       const tileId = actorState.ownRemaining.at(-1);
       assert.notEqual(tileId, undefined);
-      state = await roomRequest(actor, 'PATCH', { action: 'discard', tileId });
+      const discardAction = { action: 'discard', tileId, actionId: crypto.randomUUID() };
+      state = await roomRequest(actor, 'PATCH', discardAction);
+      const afterFirstDelivery = [...state.counts];
+      const duplicateDelivery = await roomRequest(actor, 'PATCH', discardAction);
+      assert.deepEqual(duplicateDelivery.counts, afterFirstDelivery);
+      state = duplicateDelivery;
 
       const opponent = credentials[1 - state.turn];
       const opponentState = await roomRequest(opponent, 'GET');

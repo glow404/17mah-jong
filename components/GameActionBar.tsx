@@ -6,7 +6,12 @@ export function GameActionBar({
   disabled?: boolean;
 }) {
   return (
-    <div className={`game-action-bar ${disabled ? 'is-disabled' : ''}`} aria-disabled={disabled}>
+    <div
+      className={`game-action-bar ${disabled ? 'is-disabled' : ''}`}
+      role="group"
+      aria-label="当前操作"
+      aria-disabled={disabled}
+    >
       {children}
     </div>
   );

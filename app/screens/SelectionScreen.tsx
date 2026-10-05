@@ -13,6 +13,7 @@ export interface SelectionScreenProps {
   subtitle: string;
   readyLabel: string;
   waiting?: boolean;
+  connectionMessage?: string;
   onToggle: (id: number) => void;
   onRecommend: () => void;
   onReady: () => void;
@@ -29,6 +30,7 @@ export function SelectionScreenPage({
   subtitle,
   readyLabel,
   waiting,
+  connectionMessage,
   onToggle,
   onRecommend,
   onReady,
@@ -42,6 +44,11 @@ export function SelectionScreenPage({
   return (
     <main className="game-shell selection-shell" data-screen="selection">
       {header}
+      {connectionMessage && (
+        <p className="online-error" role="status" aria-live="polite">
+          {connectionMessage}
+        </p>
+      )}
       <section className="selection-header">
         <div>
           <p className="eyebrow">
@@ -50,8 +57,13 @@ export function SelectionScreenPage({
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        <div className="selection-status">
-          <span>{selected.length}</span>
+        <div
+          className="selection-status"
+          role="status"
+          aria-live="polite"
+          aria-label={`已选择 ${selected.length} 张，共 13 张`}
+        >
+          <span aria-hidden="true">{selected.length}</span>
           <small>/ 13 张</small>
         </div>
       </section>
@@ -66,7 +78,11 @@ export function SelectionScreenPage({
               智能推荐听牌
             </button>
           </div>
-          <div className="pool-grid">
+          <div
+            className="pool-grid"
+            role="group"
+            aria-label="你的 34 张牌池；方向键浏览，回车或空格选择"
+          >
             {sortTiles(pool).map((id) => (
               <MahjongTile
                 key={id}
