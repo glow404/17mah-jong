@@ -1,27 +1,25 @@
 // Cloudflare Worker、静态资源、图片服务和 D1 数据库的部署配置。
 // 这里的 binding 名称必须和 Worker 中声明的环境类型保持一致。
 {
-	"$schema": "./node_modules/wrangler/config-schema.json",
-	"name": "mahjong-17",
-	"compatibility_date": "2026-05-22",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"main": "./worker/index.ts",
-	"assets": {
-		"binding": "ASSETS",
-		"not_found_handling": "none"
-	},
-	"images": {
-		"binding": "IMAGES"
-	},
-	"d1_databases": [
-		{
-			"binding": "DB",
-			"database_name": "mahjong-db",
-			"database_id": "1da0c2e9-decc-4cca-9a9d-fb97cdc18afa",
-			"remote": false,
-			"migrations_dir": "drizzle"
-		}
-	]
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "mahjong-17",
+  "compatibility_date": "2026-05-22",
+  "compatibility_flags": ["nodejs_compat"],
+  "main": "./worker/index.ts",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+  },
+  "images": {
+    "binding": "IMAGES",
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "mahjong-db",
+      "database_id": "1da0c2e9-decc-4cca-9a9d-fb97cdc18afa",
+      "remote": false,
+      "migrations_dir": "drizzle",
+    },
+  ],
 }

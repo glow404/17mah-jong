@@ -78,7 +78,11 @@ chore(deps): update development dependencies
 
 ```bash
 npm run lint
+npm run format:check
 npm run typecheck
+npm run test:unit
+npm run test:integration
+npm run test:e2e
 npm run test:coverage
 npm run build
 ```

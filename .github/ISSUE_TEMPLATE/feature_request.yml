@@ -1,6 +1,6 @@
 name: 功能建议
 description: 提议新功能、规则改进或工程优化
-title: "[Feature]: "
+title: '[Feature]: '
 labels:
   - enhancement
 body:

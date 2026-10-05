@@ -1,0 +1,13 @@
+node_modules
+dist
+.next
+.vinext
+.wrangler
+coverage
+work
+public/og.png
+docs/assets
+drizzle/meta
+*.sql
+*.db
+*.sqlite*

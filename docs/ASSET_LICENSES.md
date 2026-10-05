@@ -6,12 +6,12 @@
 
 ## 仓库内资源
 
-| 路径 | 类型与来源 | 许可/说明 |
-| --- | --- | --- |
-| `public/favicon.svg` | 为本项目制作的站点图标 | MIT License |
-| `public/og.png` | 为本项目制作的分享预览图 | MIT License |
-| `docs/assets/desktop-home.png` | 本项目公开演示页面的真实桌面端截图 | MIT License |
-| `docs/assets/mobile-home.png` | 本项目公开演示页面的真实移动端截图 | MIT License |
+| 路径                            | 类型与来源                             | 许可/说明   |
+| ------------------------------- | -------------------------------------- | ----------- |
+| `public/favicon.svg`            | 为本项目制作的站点图标                 | MIT License |
+| `public/og.png`                 | 为本项目制作的分享预览图               | MIT License |
+| `docs/assets/desktop-home.png`  | 本项目公开演示页面的真实桌面端截图     | MIT License |
+| `docs/assets/mobile-home.png`   | 本项目公开演示页面的真实移动端截图     | MIT License |
 | `docs/assets/gameplay-demo.gif` | 本项目公开演示页面的 31 秒真实操作录屏 | MIT License |
 
 ## 字体与麻将牌面

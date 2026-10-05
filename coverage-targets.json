@@ -1,0 +1,17 @@
+{
+  "core": {
+    "scope": "lib/**/*.ts",
+    "targetLines": 90,
+    "targetBranches": 90,
+    "targetFunctions": 90,
+    "currentMinimumLines": 90,
+    "currentMinimumBranches": 90,
+    "currentMinimumFunctions": 90
+  },
+  "project": {
+    "scope": "app/**/*.tsx, app/**/*.ts, db/**/*.ts, lib/**/*.ts, worker/**/*.ts",
+    "targetLines": 80,
+    "targetBranches": 80,
+    "targetFunctions": 80
+  }
+}

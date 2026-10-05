@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -34,3 +36,27 @@ jobs:
 
       - name: Run quality gate
         run: npm run ci
+
+      - name: Start production server for E2E
+        shell: bash
+        run: |
+          npm run start > "$RUNNER_TEMP/17mah-jong-server.log" 2>&1 &
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:3000/ > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/17mah-jong-server.log"
+          exit 1
+
+      - name: Run E2E smoke test
+        env:
+          E2E_BASE_URL: http://127.0.0.1:3000
+        run: npm run test:e2e
+
+      - name: Scan repository for secrets
+        if: ${{ always() }}
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
