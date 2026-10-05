@@ -4,6 +4,7 @@ import { runRoomMaintenance } from '../../worker/maintenance';
 
 function fakeDatabase(state: Record<string, unknown>, presence: [number | null, number | null]) {
   let savedState: Record<string, unknown> | null = null;
+  const appendedEvents: { type: string; payload: unknown }[] = [];
   const db = {
     prepare(query: string) {
       let values: unknown[] = [];
@@ -25,16 +26,28 @@ function fakeDatabase(state: Record<string, unknown>, presence: [number | null, 
               return { results: [] as T[] };
             },
             async run() {
-              if (query.includes('UPDATE game_rooms'))
+              if (query.includes('UPDATE game_rooms')) {
                 savedState = JSON.parse(String(values[0])) as Record<string, unknown>;
+                return { meta: { changes: 1 } };
+              }
+              if (query.includes('INSERT INTO game_events'))
+                appendedEvents.push({
+                  type: String(values[1]),
+                  payload: JSON.parse(String(values[3])) as unknown,
+                });
               return { meta: { changes: query.includes('UPDATE game_rooms') ? 1 : 0 } };
             },
           };
         },
       };
     },
+    async batch(statements: { run: () => Promise<{ meta: { changes: number } }> }[]) {
+      const results = [];
+      for (const statement of statements) results.push(await statement.run());
+      return results;
+    },
   } as unknown as D1Database;
-  return { db, getSavedState: () => savedState };
+  return { db, getSavedState: () => savedState, getAppendedEvents: () => appendedEvents };
 }
 
 function activeRoom(now: number, deadline: number) {
@@ -67,6 +80,7 @@ test('scheduled maintenance forfeits an expired turn and clears its deadline', a
   assert.equal(saved?.turnDeadlineAt, null);
   assert.equal(saved?.pendingRon, null);
   assert.equal(saved?.version, 13);
+  assert.equal(fixture.getAppendedEvents()[0]?.type, 'player.forfeited');
 });
 
 test('scheduled maintenance awards a disconnect forfeit but draws if both seats are gone', async () => {
@@ -87,4 +101,5 @@ test('scheduled maintenance awards a disconnect forfeit but draws if both seats 
     kind: 'draw',
     reason: 'both-disconnected',
   });
+  assert.equal(both.getAppendedEvents()[0]?.type, 'hand.drawn');
 });

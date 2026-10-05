@@ -57,8 +57,13 @@ export function SelectionScreenPage({
           <h2>{title}</h2>
           <p>{subtitle}</p>
         </div>
-        <div className="selection-status">
-          <span>{selected.length}</span>
+        <div
+          className="selection-status"
+          role="status"
+          aria-live="polite"
+          aria-label={`已选择 ${selected.length} 张，共 13 张`}
+        >
+          <span aria-hidden="true">{selected.length}</span>
           <small>/ 13 张</small>
         </div>
       </section>
@@ -73,7 +78,11 @@ export function SelectionScreenPage({
               智能推荐听牌
             </button>
           </div>
-          <div className="pool-grid">
+          <div
+            className="pool-grid"
+            role="group"
+            aria-label="你的 34 张牌池；方向键浏览，回车或空格选择"
+          >
             {sortTiles(pool).map((id) => (
               <MahjongTile
                 key={id}

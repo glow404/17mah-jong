@@ -8,12 +8,14 @@ export function ResultScreen({
   opponentName,
   onHome,
   onAgain,
+  onHistory,
 }: {
   result: GameResult;
   indicator: number;
   opponentName: string;
   onHome: () => void;
   onAgain: () => void;
+  onHistory?: () => void;
 }) {
   return (
     <div className="modal-backdrop result-backdrop" data-screen="result">
@@ -91,6 +93,13 @@ export function ResultScreen({
                 <span key={yaku}>{yaku}</span>
               ))}
             </div>
+            <div className="score-bonus-detail">
+              <span>宝牌 {result.score?.dora ?? 0} 枚</span>
+              <span>里宝牌 {result.score?.uraDora ?? 0} 枚</span>
+              <span>
+                合计 {result.score?.han ?? 0} 番 · {result.score?.fu ?? 0} 符
+              </span>
+            </div>
             <div className="payment-line">
               <small>底分结算</small>
               <b>
@@ -104,6 +113,11 @@ export function ResultScreen({
           </>
         )}
         <div className="result-actions">
+          {onHistory && (
+            <button className="secondary-action" type="button" onClick={onHistory}>
+              查看本局牌谱
+            </button>
+          )}
           <button className="secondary-action" type="button" onClick={onHome}>
             返回首页
           </button>

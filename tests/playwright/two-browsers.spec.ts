@@ -183,6 +183,53 @@ test('two players finish a full game through reload and weak high-latency links'
   expect(refreshedMidGame).toBe(true);
   expect(state.result?.kind).toBe('draw');
   expect(state.counts).toEqual([17, 17]);
+  const historyResponse = await first.request.get('/api/history?limit=5');
+  expect(historyResponse.status()).toBe(200);
+  const history = (await historyResponse.json()) as {
+    matches: Array<{ matchId: string; result: { kind: string } }>;
+  };
+  const archivedMatch = history.matches[0];
+  expect(archivedMatch?.matchId).toMatch(/^[a-f\d]{32}$/i);
+  expect(archivedMatch?.result.kind).toBe('draw');
+  const replayResponse = await first.request.get(`/api/history?matchId=${archivedMatch?.matchId}`);
+  expect(replayResponse.status()).toBe(200);
+  const replay = (await replayResponse.json()) as {
+    events: Array<{ sequence: number; type: string }>;
+  };
+  expect(replay.events.map((event) => event.sequence)).toEqual(
+    replay.events.map((_, index) => index + 1),
+  );
+  expect(replay.events.some((event) => event.type === 'match.created')).toBe(true);
+  expect(replay.events.some((event) => event.type === 'hand.selected')).toBe(true);
+  expect(replay.events.some((event) => event.type === 'tile.discarded')).toBe(true);
+  expect(replay.events.at(-1)?.type).toBe('hand.drawn');
+  const replayJson = JSON.stringify(replay);
+  expect(replayJson).not.toContain(firstCredentials.token);
+  expect(replayJson).not.toContain(firstCredentials.code);
+  expect(replayJson).not.toContain('weak-a-');
+
+  const outsider = await browser.newContext({ baseURL });
+  await register(outsider, `weak-outsider-${suffix}@example.com`);
+  const deniedReplay = await outsider.request.get(`/api/history?matchId=${archivedMatch?.matchId}`);
+  expect(deniedReplay.status()).toBe(404);
+  await outsider.close();
+
+  const downloadResponse = await first.request.get(
+    `/api/history?matchId=${archivedMatch?.matchId}&format=export`,
+  );
+  expect(downloadResponse.headers()['content-disposition']).toContain('attachment');
+  await pages[0]!.getByRole('button', { name: '查看本局牌谱' }).click();
+  await expect(pages[0]!.locator('[data-screen="history"]')).toBeVisible();
+  await pages[0]!.getByRole('button', { name: /逐巡回放/ }).click();
+  await expect(pages[0]!.locator('[data-screen="replay"]')).toBeVisible();
+  await expect(pages[0]!.getByText('事件 1 /', { exact: false })).toBeVisible();
+  await pages[0]!.getByRole('button', { name: '下一步' }).click();
+  await expect(pages[0]!.getByText('事件 2 /', { exact: false })).toBeVisible();
+  await pages[0]!.getByRole('button', { name: '上一步' }).click();
+  await expect(pages[0]!.getByText('事件 1 /', { exact: false })).toBeVisible();
+  await pages[0]!.getByRole('button', { name: '← 对局历史' }).click();
+  await pages[0]!.getByRole('button', { name: '← 返回上一页' }).click();
+  await expect(pages[0]!.locator('[data-screen="online"]')).toBeVisible();
   await Promise.all(pages.map((page) => page.unrouteAll({ behavior: 'wait' })));
   for (const page of pages) await page.close();
   await first.close();

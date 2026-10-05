@@ -1,4 +1,6 @@
 import type { ForfeitReason, GameResult, Seat } from '../lib/contracts/mahjong';
+import type { MatchEventInput } from '../lib/history/events';
+import { saveRoomWithHistory } from '../db/roomStore';
 
 const DISCONNECT_GRACE_MS = 90_000;
 const ROOM_TTL_MS = 24 * 60 * 60 * 1000;
@@ -89,26 +91,30 @@ export async function runRoomMaintenance(db: D1Database, now = Date.now()) {
     room.pendingScore = null;
     room.turnDeadlineAt = null;
     room.version += 1;
-    const update = await db
-      .prepare(
-        `UPDATE game_rooms
-         SET state = ?, updated_at = ?
-         WHERE code = ? AND json_extract(state, '$.version') = ?
-           AND (SELECT last_seen_at FROM room_presence WHERE room_code = ? AND seat = 0) IS ?
-           AND (SELECT last_seen_at FROM room_presence WHERE room_code = ? AND seat = 1) IS ?`,
-      )
-      .bind(
-        JSON.stringify(room),
-        now,
-        candidate.code,
-        expectedVersion,
-        candidate.code,
-        lastSeenAt[0],
-        candidate.code,
-        lastSeenAt[1],
-      )
-      .run();
-    if ((update.meta.changes ?? 0) > 0) settled += 1;
+    const event: MatchEventInput =
+      result.kind === 'draw'
+        ? {
+            type: 'hand.drawn',
+            seat: null,
+            stateVersion: room.version,
+            createdAt: now,
+            payload: { reason: 'both-disconnected' },
+          }
+        : {
+            type: 'player.forfeited',
+            seat: result.loser,
+            stateVersion: room.version,
+            createdAt: now,
+            payload: { winner: result.winner, reason: result.reason },
+          };
+    const updated = await saveRoomWithHistory(db, candidate.code, room, expectedVersion, {
+      events: [event],
+      expectedPresence: [
+        { seat: 0, lastSeenAt: lastSeenAt[0] },
+        { seat: 1, lastSeenAt: lastSeenAt[1] },
+      ],
+    });
+    if (updated) settled += 1;
   }
 
   const removed = await db

@@ -10,6 +10,19 @@
     "MIN_GAME_PROTOCOL": "1",
   },
   "main": "./worker/index.ts",
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+    "logs": {
+      "invocation_logs": false,
+    },
+  },
+  "analytics_engine_datasets": [
+    {
+      "binding": "ANALYTICS",
+      "dataset": "mahjong_operational_metrics",
+    },
+  ],
   "triggers": {
     "crons": ["* * * * *"],
   },

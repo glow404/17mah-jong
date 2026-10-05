@@ -17,6 +17,7 @@ import { ensureAuthTables, getSessionUser } from '../../../db/auth';
 import { env } from 'cloudflare:workers';
 import { GAME_PROTOCOL_VERSION } from '../../../lib/contracts/protocol';
 import type { GameResult, RoomSnapshot, ScoreResult, Seat } from '../../../lib/contracts/mahjong';
+import type { MatchEventInput } from '../../../lib/history/events';
 import { isFuriten } from '../../../lib/rules/furiten';
 import { evaluateWin } from '../../../lib/rules/scoring';
 import { suggestTenpaiHand } from '../../../lib/rules/selection';
@@ -171,7 +172,14 @@ async function settleExpiredRoom(code: string, room: RoomState, now = Date.now()
     if (room.turnDeadlineAt == null) {
       room.turnDeadlineAt = now + TURN_TIMEOUT_MS;
       room.version += 1;
-      if (!(await saveRoom(code, room, expectedVersion)))
+      const event: MatchEventInput = {
+        type: 'turn.deadline.started',
+        seat: room.pendingRon ?? room.turn,
+        stateVersion: room.version,
+        createdAt: now,
+        payload: { turnDeadlineAt: room.turnDeadlineAt },
+      };
+      if (!(await saveRoom(code, room, expectedVersion, { events: [event] })))
         return (await readRoom<RoomState>(code)) ?? room;
     }
     return room;
@@ -181,7 +189,28 @@ async function settleExpiredRoom(code: string, room: RoomState, now = Date.now()
   room.pendingScore = null;
   room.turnDeadlineAt = null;
   room.version += 1;
-  if (!(await saveRoom(code, room, expectedVersion, presenceGuards)))
+  const event: MatchEventInput =
+    result.kind === 'draw'
+      ? {
+          type: 'hand.drawn',
+          seat: null,
+          stateVersion: room.version,
+          createdAt: now,
+          payload: { reason: 'both-disconnected' },
+        }
+      : {
+          type: 'player.forfeited',
+          seat: result.loser,
+          stateVersion: room.version,
+          createdAt: now,
+          payload: { winner: result.winner, reason: result.reason },
+        };
+  if (
+    !(await saveRoom(code, room, expectedVersion, {
+      events: [event],
+      expectedPresence: presenceGuards,
+    }))
+  )
     return (await readRoom<RoomState>(code)) ?? room;
   return room;
 }
@@ -310,7 +339,16 @@ export async function POST(request: Request) {
       room.tokens[1] = token();
       room.userIds[1] = user.id;
       room.version += 1;
-      if (!(await saveRoom(code, room, expectedVersion)))
+      const event: MatchEventInput = {
+        type: 'player.joined',
+        seat: 1,
+        stateVersion: room.version,
+        createdAt: Date.now(),
+        payload: {},
+      };
+      if (
+        !(await saveRoom(code, room, expectedVersion, { events: [event], joinedUserId: user.id }))
+      )
         return Response.json({ error: '房间状态刚刚变化，请重试' }, { status: 409 });
       await touchRoomPresence(code, 1);
       return Response.json({ code, token: room.tokens[1] });
@@ -350,6 +388,9 @@ export async function PATCH(request: Request) {
         { status: 409, headers: { 'Cache-Control': 'no-store' } },
       );
     const expectedVersion = room.version;
+    const eventVersion = expectedVersion + 1;
+    const eventTime = Date.now();
+    const events: MatchEventInput[] = [];
     const clientProtocol = Number(request.headers.get('X-Game-Protocol') ?? 1);
     const requiresIdempotency = clientProtocol >= 2;
     const actionId = typeof body.actionId === 'string' ? body.actionId : '';
@@ -391,6 +432,13 @@ export async function PATCH(request: Request) {
         .filter((id) => !unique.has(id))
         .sort((left, right) => tileType(left) - tileType(right) || left - right);
       if (room.hands[0] && room.hands[1]) room.turnDeadlineAt = Date.now() + TURN_TIMEOUT_MS;
+      events.push({
+        type: 'hand.selected',
+        seat,
+        stateVersion: eventVersion,
+        createdAt: eventTime,
+        payload: { selectedIds: selected.slice(), turnDeadlineAt: room.turnDeadlineAt ?? null },
+      });
     } else if (body.action === 'discard') {
       if (
         phase(room) !== 'playing' ||
@@ -432,6 +480,21 @@ export async function PATCH(request: Request) {
         room.turn = opponent;
         room.turnDeadlineAt = Date.now() + TURN_TIMEOUT_MS;
       }
+      events.push({
+        type: 'tile.discarded',
+        seat,
+        stateVersion: eventVersion,
+        createdAt: eventTime,
+        payload: { physicalTileId: tileId, turnDeadlineAt: room.turnDeadlineAt ?? null },
+      });
+      if (room.result?.kind === 'draw')
+        events.push({
+          type: 'hand.drawn',
+          seat: null,
+          stateVersion: eventVersion,
+          createdAt: eventTime,
+          payload: { reason: 'seventeen-discard' },
+        });
     } else if (body.action === 'pass') {
       if (room.pendingRon !== seat)
         return Response.json({ error: '没有可放弃的荣和机会' }, { status: 409 });
@@ -441,6 +504,21 @@ export async function PATCH(request: Request) {
       if (room.counts[0] >= 17 && room.counts[1] >= 17) room.result = { kind: 'draw' };
       else room.turn = seat;
       room.turnDeadlineAt = room.result ? null : Date.now() + TURN_TIMEOUT_MS;
+      events.push({
+        type: 'ron.declined',
+        seat,
+        stateVersion: eventVersion,
+        createdAt: eventTime,
+        payload: { turnDeadlineAt: room.turnDeadlineAt ?? null },
+      });
+      if (room.result?.kind === 'draw')
+        events.push({
+          type: 'hand.drawn',
+          seat: null,
+          stateVersion: eventVersion,
+          createdAt: eventTime,
+          payload: { reason: 'seventeen-discard' },
+        });
     } else if (body.action === 'ron') {
       if (room.pendingRon !== seat || !room.pendingScore)
         return Response.json({ error: '现在不能荣和' }, { status: 409 });
@@ -453,6 +531,13 @@ export async function PATCH(request: Request) {
         uraIndicator: room.uraIndicator,
       };
       room.turnDeadlineAt = null;
+      events.push({
+        type: 'ron.claimed',
+        seat,
+        stateVersion: eventVersion,
+        createdAt: eventTime,
+        payload: {},
+      });
     } else if (body.action === 'surrender') {
       if (!room.tokens[1] || (currentPhase !== 'selecting' && currentPhase !== 'playing'))
         return Response.json({ error: '当前阶段不能认输' }, { status: 409 });
@@ -465,6 +550,13 @@ export async function PATCH(request: Request) {
       room.pendingRon = null;
       room.pendingScore = null;
       room.turnDeadlineAt = null;
+      events.push({
+        type: 'player.forfeited',
+        seat,
+        stateVersion: eventVersion,
+        createdAt: eventTime,
+        payload: { winner: (1 - seat) as Seat, reason: 'resigned' },
+      });
     } else return Response.json({ error: '未知的对局操作' }, { status: 400 });
 
     if (actionId) {
@@ -472,7 +564,7 @@ export async function PATCH(request: Request) {
       room.recentActionIds = recentActionIds;
     }
     room.version += 1;
-    if (!(await saveRoom(code, room, expectedVersion)))
+    if (!(await saveRoom(code, room, expectedVersion, { events })))
       return Response.json({ error: '对局状态刚刚变化，请重试' }, { status: 409 });
     await touchRoomPresence(code, seat);
     return Response.json(publicRoom(room, seat));

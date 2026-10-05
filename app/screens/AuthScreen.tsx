@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { useAccessibleDialog } from '../hooks/useAccessibleDialog';
 
 export interface AuthUser {
   id: string;
@@ -12,6 +13,7 @@ export function AuthScreen({
   onClose: () => void;
   onSuccess: (user: AuthUser) => void;
 }) {
+  const dialogRef = useAccessibleDialog<HTMLElement>(onClose);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -44,7 +46,15 @@ export function AuthScreen({
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section className="auth-modal" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+      <section
+        ref={dialogRef}
+        className="auth-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-title"
+        aria-describedby="auth-description"
+        tabIndex={-1}
+      >
         <button className="modal-close" type="button" onClick={onClose} aria-label="关闭登录">
           ×
         </button>
@@ -52,7 +62,7 @@ export function AuthScreen({
           <span /> 牌手账号
         </p>
         <h2 id="auth-title">{mode === 'login' ? '登录后联机对战' : '注册新的牌手账号'}</h2>
-        <p>电脑对战无需登录。账号仅用于保护你的联机房间与对局身份。</p>
+        <p id="auth-description">电脑对战无需登录。账号仅用于保护你的联机房间与对局身份。</p>
         <form onSubmit={submit}>
           <label>
             邮箱

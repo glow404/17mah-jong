@@ -26,7 +26,15 @@ export function enforceRateLimit(request: Request, scope: string, limit = 12, wi
   }
   current.count += 1;
   if (current.count > limit) {
-    console.warn(JSON.stringify({ event: 'rate_limit', scope, key: key.replace(/:.*/, '') }));
+    console.warn(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: 'warn',
+        service: '17mah-jong',
+        event: 'rate_limit.triggered',
+        scope,
+      }),
+    );
     throw new Error('请求过于频繁，请稍后重试');
   }
 }

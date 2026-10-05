@@ -4,6 +4,7 @@ import { DiscardRiver } from '../../components/DiscardRiver';
 import { MahjongTile } from '../../components/MahjongTile';
 import { doraFromIndicator, sortTiles, tileText, tileType } from '../../lib/rules/tiles';
 import type { GameResult, ScoreResult, Seat } from '../../lib/contracts/mahjong';
+import type { AiDiscardDecision } from '../game/ai';
 import { ResultScreen } from './ResultScreen';
 
 export interface TableScreenProps {
@@ -21,6 +22,7 @@ export interface TableScreenProps {
   turnDeadlineAt?: number | null;
   canSurrender?: boolean;
   furiten: boolean;
+  aiInsight?: AiDiscardDecision | null;
   result: GameResult | null;
   baseScore: number;
   onSelectDiscard: (id: number) => void;
@@ -30,6 +32,7 @@ export interface TableScreenProps {
   onSurrender?: () => void;
   onAgain: () => void;
   onHome: () => void;
+  onHistory?: () => void;
   header: ReactNode;
   waitingText?: string;
 }
@@ -49,6 +52,7 @@ export function TableScreen({
   turnDeadlineAt = null,
   canSurrender = false,
   furiten,
+  aiInsight = null,
   result,
   baseScore,
   onSelectDiscard,
@@ -58,6 +62,7 @@ export function TableScreen({
   onSurrender,
   onAgain,
   onHome,
+  onHistory,
   header,
   waitingText,
 }: TableScreenProps) {
@@ -87,12 +92,29 @@ export function TableScreen({
             </div>
             <span className="riichi-badge">两立直</span>
           </div>
-          <div className="hidden-hand">
+          <div className="hidden-hand" role="img" aria-label={`对手手牌，${hand.length}张暗牌`}>
             {hand.map((_, index) => (
               <MahjongTile tile={0} hidden small key={index} />
             ))}
           </div>
-          <DiscardRiver tiles={discards[1]} />
+          <DiscardRiver tiles={discards[1]} label="对手弃牌区" />
+          {aiInsight && (
+            <div className="ai-insight" aria-live="polite">
+              <div>
+                <b>
+                  {aiInsight.difficulty === 'easy'
+                    ? '简单 AI'
+                    : aiInsight.difficulty === 'normal'
+                      ? '普通 AI'
+                      : '困难 AI'}{' '}
+                  已舍
+                </b>
+                <MahjongTile tile={tileType(aiInsight.physicalId)} small />
+                <small>思考 {aiInsight.elapsedMs.toFixed(1)} ms</small>
+              </div>
+              <p>{aiInsight.reason}</p>
+            </div>
+          )}
         </div>
         <div className="table-center">
           <div className="wind-box">
@@ -110,12 +132,16 @@ export function TableScreen({
             <MahjongTile tile={indicator} small />
             <em>宝牌 {tileText(doraFromIndicator(indicator))}</em>
           </div>
-          <div className={`turn-notice ${turn === 0 ? 'your-turn' : ''}`}>
+          <div
+            className={`turn-notice ${turn === 0 ? 'your-turn' : ''}`}
+            role="status"
+            aria-live="polite"
+          >
             {waitingText ?? (turn === 0 ? '轮到你舍牌' : `${opponentName}正在思考…`)}
           </div>
         </div>
         <div className="player-zone">
-          <DiscardRiver tiles={discards[0]} />
+          <DiscardRiver tiles={discards[0]} label="你的弃牌区" />
           <div className="active-hand">
             {hand.map((tile, index) => (
               <MahjongTile tile={tile} key={`${tile}-${index}`} />
@@ -126,7 +152,7 @@ export function TableScreen({
               <b>可舍牌</b>
               <small>从剩余 {remainingTiles.length} 张中任选一张</small>
             </div>
-            <div className="reserve-tiles">
+            <div className="reserve-tiles" role="group" aria-label="可选择舍出的牌">
               {sortTiles(remainingTiles).map((id) => (
                 <MahjongTile
                   key={id}
@@ -159,6 +185,7 @@ export function TableScreen({
                   <button
                     className="discard-button"
                     type="button"
+                    aria-keyshortcuts="Enter"
                     disabled={turn !== 0 || pendingRon || Boolean(result) || actionBusy}
                     onClick={() => onDiscard(selectedDiscard)}
                   >
@@ -192,10 +219,22 @@ export function TableScreen({
             <span>{pendingScore.yaku.join(' · ')}</span>
           </div>
           <MahjongTile tile={pendingScore.winningTile} />
-          <button className="ron-button" type="button" disabled={actionBusy} onClick={onRon}>
+          <button
+            className="ron-button"
+            type="button"
+            aria-keyshortcuts="R"
+            disabled={actionBusy}
+            onClick={onRon}
+          >
             荣和
           </button>
-          <button className="pass-button" type="button" disabled={actionBusy} onClick={onPass}>
+          <button
+            className="pass-button"
+            type="button"
+            aria-keyshortcuts="P"
+            disabled={actionBusy}
+            onClick={onPass}
+          >
             放弃
           </button>
         </div>
@@ -207,6 +246,7 @@ export function TableScreen({
           opponentName={opponentName}
           onHome={onHome}
           onAgain={onAgain}
+          onHistory={onHistory}
         />
       )}
     </main>

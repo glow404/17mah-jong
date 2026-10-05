@@ -8,6 +8,7 @@ import vinext from 'vinext';
 import { defineConfig } from 'vite';
 
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === 'seatbelt';
+const e2ePersistencePath = process.env.E2E_D1_PERSIST_PATH;
 
 export default defineConfig(({ command }) => ({
   server: isCodexSeatbeltSandbox
@@ -26,6 +27,7 @@ export default defineConfig(({ command }) => ({
     ...(command === 'build' ? [sites()] : []),
 
     cloudflare({
+      ...(e2ePersistencePath ? { persistState: { path: e2ePersistencePath } } : {}),
       viteEnvironment: {
         name: 'rsc',
         childEnvironments: ['ssr'],

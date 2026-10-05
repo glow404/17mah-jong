@@ -52,3 +52,43 @@ export const sessions = sqliteTable(
   },
   (table) => [index('idx_sessions_expires_at').on(table.expiresAt)],
 );
+
+/** Persistent match metadata survives room cleanup; ended records are history entries. */
+export const gameHistory = sqliteTable(
+  'game_history',
+  {
+    matchId: text('match_id').primaryKey(),
+    roomCode: text('room_code').notNull().unique(),
+    player0Id: text('player0_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    player1Id: text('player1_id').references(() => users.id, { onDelete: 'cascade' }),
+    baseScore: integer('base_score').notNull(),
+    createdAt: integer('created_at').notNull(),
+    finishedAt: integer('finished_at'),
+    result: text('result'),
+    finalVersion: integer('final_version'),
+  },
+  (table) => [
+    index('idx_game_history_player0').on(table.player0Id, table.finishedAt),
+    index('idx_game_history_player1').on(table.player1Id, table.finishedAt),
+    index('idx_game_history_finished_at').on(table.finishedAt),
+  ],
+);
+
+/** Append-only event stream. The FK intentionally targets history, not expiring rooms. */
+export const gameEvents = sqliteTable(
+  'game_events',
+  {
+    matchId: text('match_id')
+      .notNull()
+      .references(() => gameHistory.matchId, { onDelete: 'cascade' }),
+    sequence: integer('sequence').notNull(),
+    stateVersion: integer('state_version').notNull(),
+    type: text('type').notNull(),
+    seat: integer('seat'),
+    payload: text('payload').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.matchId, table.sequence] })],
+);

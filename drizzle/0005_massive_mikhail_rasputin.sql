@@ -1,0 +1,1 @@
+CREATE INDEX `idx_game_history_finished_at` ON `game_history` (`finished_at`);

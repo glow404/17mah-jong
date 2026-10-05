@@ -38,8 +38,11 @@
 - 支持两立直、宝牌、里宝牌、番符、满贯以上等级和多种普通役/役满。
 - 支持永久振听与放弃荣和后的临时振听；只能荣和对方舍牌。
 - 电脑对战无需登录；联机模式支持邮箱密码注册、登录及六位房间码。
+- 电脑对战包含简单、普通、困难三档；电脑出牌附带公开信息风险解释，并以固定种子保证相同局面决策可复现。
+- 本地电脑对战统计胜率、平均对局用时与决策耗时；AI 策略、启发式限制及固定种子基准见 [`docs/AI.md`](docs/AI.md)。
 - 联机状态保存在 Cloudflare D1，并用版本号进行乐观并发控制。
 - 和牌结算公开赢家手牌、和牌张、役种、表/里宝牌指示牌和底分倍率。
+- 保存已完成的联机历史和本地电脑对战历史，支持逐事件回放、结算明细和隐私白名单 JSON 导出。
 - 使用麻将图案牌面而非纯文本牌名，适配桌面与移动端。
 - 背景音乐、舍牌和荣和音效由 Web Audio API 实时合成，可随时关闭。
 
@@ -96,7 +99,7 @@
 - 规则引擎只覆盖上方列出的役种和自定义番符规则，并非《雀魂麻将》或日本竞技麻将规则的完整兼容实现。
 - 电脑玩家目前使用基础选牌推荐与随机合法舍牌，没有难度分级、攻防判断或可复现随机种子。
 - 联机同步使用串行 HTTP 快照轮询、指数退避重连与 15 秒心跳；页面刷新后可从当前标签页恢复房间。动作使用版本号和幂等键防止并发覆盖或重复舍牌，服务器按 60 秒操作时限、90 秒断线宽限结算，并在 Cron 中清理 24 小时无活动房间。当前仍未迁移到 WebSocket / Durable Objects，弱网完整对局覆盖见 Playwright 测试。
-- 当前只有房间码约战，没有公开匹配、观战、好友、排行榜或持久化战绩。
+- 当前只有房间码约战，没有公开匹配、观战、好友或排行榜。联机历史保留在参与者账号下；电脑对战历史只保存在当前浏览器最近 50 局。
 - 账号系统尚未提供邮箱验证、找回密码和账号删除流程；公开演示环境不承诺生产级 SLA。
 - 自动化测试覆盖规则引擎、认证/房间 API、临时 D1 数据库和 Playwright 双浏览器流程；规则行覆盖率为 96.84%。
 - Vinext 仍为 beta 依赖，升级 React、Vite 或 Cloudflare 运行时时需要进行完整回归验证。
@@ -135,8 +138,8 @@ flowchart LR
 2. 房主创建房间，服务端生成六位房间码和双方独立的房间凭证；另一位已登录用户用房间码加入。
 3. 双方提交 13 张实体牌 ID。服务端验证牌属于个人牌池、数量不重复且手牌已经听牌。
 4. 客户端每约 1.2 秒读取一次经过座位裁剪的公开牌局快照；对手手牌、私人舍牌池和里宝牌保持隐藏。
-5. 舍牌、放弃荣和与荣和请求由服务端验证回合和权限，再以 `version` 作为条件更新 D1，冲突请求返回 409 而不会覆盖较新的状态。
-6. 荣和后服务端返回赢家手牌和里宝牌指示牌，客户端展示完整结算。
+5. 舍牌、放弃荣和与荣和请求由服务端验证回合和权限，再以 `version` 作为条件更新 D1；同一数据库批次会追加不可变事件并更新历史摘要，冲突请求不会覆盖较新状态或留下孤立日志。
+6. 荣和后服务端返回赢家手牌和里宝牌指示牌，客户端展示完整结算；参与者可从历史页按事件顺序重建和回放。
 
 ## 本地开发
 
@@ -188,7 +191,7 @@ npm run build
 npx wrangler deploy
 ```
 
-部署后把 GitHub 仓库的 Website、`package.json#homepage` 和 README 试玩地址更新为自己的公开 URL。生产环境必须先完成远程 D1 迁移；部署回滚和数据备份方案仍是后续 Roadmap 项目。
+部署后把 GitHub 仓库的 Website、`package.json#homepage` 和 README 试玩地址更新为自己的公开 URL。生产环境必须先完成远程 D1 迁移，并依照[运维手册](docs/OPERATIONS.md)启用监控、配置通知接收人、确认 D1 Time Travel 并演练恢复。此仓库不含任何真实账号/数据库配置。
 
 ## 测试与质量门禁
 
@@ -200,6 +203,9 @@ npm run test:unit      # 规则引擎单元测试
 npm run test:integration # D1 迁移与服务集成测试
 npm run test:e2e        # E2E smoke test（设置 E2E_BASE_URL 后执行）
 npm run test:coverage  # 单元测试 + Node 内置覆盖率报告
+npm run benchmark:ai   # 固定种子的 AI 对 AI 牌局基准
+npm run perf:rules     # 规则计算微基准，输出 P50/P95/P99
+npm run perf:baseline  # 浏览器页面和网络探针基线（先启动本地服务）
 npm run build          # 生产构建
 npm run ci             # 依次执行以上全部质量检查
 ```
@@ -212,6 +218,7 @@ npm run ci             # 依次执行以上全部质量检查
 app/                     页面、客户端状态与 API Route Handlers
 app/screens/             首页、选牌、牌桌、结算、认证与联机页面
 app/game/                本地电脑对战 reducer 与游戏状态类型
+lib/history/             事件契约、纯函数回放、导出脱敏与本地历史
 components/              可复用牌面、弃牌区与操作栏
 hooks/                   联机同步生命周期 Hook
 db/                      D1 访问、认证、房间存储与 Drizzle schema
@@ -228,6 +235,8 @@ worker/                  Cloudflare Worker 入口
 
 - [开源成熟化 Roadmap](OPEN_SOURCE_ROADMAP.md)：CI、安全、规则测试、实时联机、AI、回放和 v1.0 验收计划。
 - [规则兼容矩阵](docs/RULE_COMPATIBILITY.md)：逐项说明与标准日本麻将/雀魂的相同与不同。
+- [对局历史与回放设计](docs/MATCH_HISTORY.md)：不可变事件、状态重建、访问控制与牌谱导出格式。
+- [运维手册](docs/OPERATIONS.md)：结构化日志、指标查询、告警、D1 恢复、部署/回滚与性能分析流程。
 - [贡献指南](CONTRIBUTING.md)：开发环境、分支、Conventional Commits 和 Pull Request 流程。
 - [Good first issues](https://github.com/glow404/17mah-jong/labels/good%20first%20issue) 与 [Help wanted](https://github.com/glow404/17mah-jong/labels/help%20wanted)：适合首次参与的任务。
 - [安全策略](SECURITY.md)：请按私密渠道报告未修复漏洞，不要创建公开 Issue。
