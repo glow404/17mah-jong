@@ -7,12 +7,15 @@
  */
 import {
   createSession,
+  deleteAccount,
+  deleteAllSessions,
   deleteSession,
   ensureAuthTables,
   getSessionUser,
   registerUser,
   verifyUser,
 } from '../../../db/auth';
+import { enforceRateLimit, parseJsonObject, requireSameOrigin } from '../../../lib/security';
 
 export async function GET(request: Request) {
   try {
@@ -31,24 +34,42 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    requireSameOrigin(request);
+    enforceRateLimit(request, 'auth', 10);
     await ensureAuthTables();
-    const body = (await request.json()) as { action?: string; email?: string; password?: string };
-    if (body.action === 'register') {
-      const user = await registerUser(body.email ?? '', body.password ?? '');
+    const body = await parseJsonObject(request);
+    const action = typeof body.action === 'string' ? body.action : '';
+    const email = typeof body.email === 'string' ? body.email : '';
+    const password = typeof body.password === 'string' ? body.password : '';
+    if (action === 'register') {
+      const user = await registerUser(email, password);
       return Response.json(
         { user },
         { status: 201, headers: { 'Set-Cookie': await createSession(user, request) } },
       );
     }
-    if (body.action === 'login') {
-      const user = await verifyUser(body.email ?? '', body.password ?? '');
+    if (action === 'login') {
+      const user = await verifyUser(email, password);
       if (!user) return Response.json({ error: '邮箱或密码不正确' }, { status: 401 });
       return Response.json(
         { user },
         { headers: { 'Set-Cookie': await createSession(user, request) } },
       );
     }
-    if (body.action === 'logout') {
+    if (action === 'logout') {
+      return Response.json(
+        { user: null },
+        { headers: { 'Set-Cookie': await deleteSession(request) } },
+      );
+    }
+    if (action === 'logout-all' || action === 'delete-account') {
+      const current = await getSessionUser(request);
+      if (!current) return Response.json({ error: '请先登录' }, { status: 401 });
+      if (action === 'delete-account') {
+        if (!(await verifyUser(current.email, password)))
+          return Response.json({ error: '密码不正确' }, { status: 401 });
+        await deleteAccount(current.id);
+      } else await deleteAllSessions(current.id);
       return Response.json(
         { user: null },
         { headers: { 'Set-Cookie': await deleteSession(request) } },
