@@ -37,7 +37,9 @@ test('two browser contexts can create and join a room without leaking hidden sta
 
 test('guest can enter computer battle without authentication', async ({ page }) => {
   await page.goto('/');
+  await expect(page.locator('[data-screen="home"]')).toBeVisible();
   await expect(page.getByText('开始电脑对战')).toBeVisible();
   await page.getByText('开始电脑对战').click();
+  await expect(page.locator('[data-screen="selection"]')).toBeVisible();
   await expect(page.getByText('电脑牌手')).toBeVisible();
 });
