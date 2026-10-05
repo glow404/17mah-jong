@@ -13,6 +13,12 @@ import { GameActionBar } from '../components/GameActionBar';
 import { MahjongTile } from '../components/MahjongTile';
 import { GameAudio } from '../lib/audio';
 import { useRemotePolling } from '../hooks/useRemotePolling';
+import { AuthScreen } from './screens/AuthScreen';
+import { HomeScreen } from './screens/HomeScreen';
+import { OnlineScreen } from './screens/OnlineScreen';
+import { ResultScreen } from './screens/ResultScreen';
+import { SelectionScreenPage } from './screens/SelectionScreen';
+import { TableScreen } from './screens/TableScreen';
 import {
   createWall,
   describeWaits,
@@ -1318,69 +1324,79 @@ export default function GameClient() {
   const content = (() => {
     if (screen === 'home')
       return (
-        <Home
-          baseScore={baseScore}
-          setBaseScore={setBaseScore}
-          onCpu={startCpu}
-          onOnline={openOnline}
-          onRules={() => setShowRules(true)}
-        />
+        <HomeScreen>
+          <Home
+            baseScore={baseScore}
+            setBaseScore={setBaseScore}
+            onCpu={startCpu}
+            onOnline={openOnline}
+            onRules={() => setShowRules(true)}
+          />
+        </HomeScreen>
       );
     if (screen === 'select' && deal)
       return (
-        <SelectionScreen
-          pool={deal.pools[0]}
-          selected={selected}
-          indicator={deal.indicator}
-          wind="east"
-          title="选出 13 张，做成你的听牌。"
-          subtitle="其余 21 张全部保留；对局中每一巡都可从中任选一张舍出。只有达到满贯的等待牌可以荣和。"
-          readyLabel="确认手牌，开始对局"
-          onToggle={(id) => toggleSelected(id)}
-          onRecommend={() => setSelected(deal.suggestions[0])}
-          onReady={confirmLocalHand}
-          onBack={goHome}
-          onRules={() => setShowRules(true)}
-        />
+        <SelectionScreenPage>
+          <SelectionScreen
+            pool={deal.pools[0]}
+            selected={selected}
+            indicator={deal.indicator}
+            wind="east"
+            title="选出 13 张，做成你的听牌。"
+            subtitle="其余 21 张全部保留；对局中每一巡都可从中任选一张舍出。只有达到满贯的等待牌可以荣和。"
+            readyLabel="确认手牌，开始对局"
+            onToggle={(id) => toggleSelected(id)}
+            onRecommend={() => setSelected(deal.suggestions[0])}
+            onReady={confirmLocalHand}
+            onBack={goHome}
+            onRules={() => setShowRules(true)}
+          />
+        </SelectionScreenPage>
       );
     if (screen === 'playing' && game) {
       const furiten = isFuriten(game.hands[0], game.discards[0], game.temporaryFuriten[0]);
       return (
-        <GameTable
-          hand={game.hands[0]}
-          indicator={game.indicator}
-          discards={game.discards}
-          counts={game.counts}
-          turn={game.turn}
-          remainingTiles={game.reserves[0]}
-          selectedDiscard={localDiscard}
-          opponentName="电脑牌手"
-          pendingRon={game.pendingRon === 0}
-          pendingScore={game.pendingScore}
-          furiten={furiten}
-          result={game.result}
-          baseScore={baseScore}
-          onSelectDiscard={setLocalDiscard}
-          onDiscard={(id) => performLocalDiscard(0, id)}
-          onRon={localRon}
-          onPass={localPass}
-          onAgain={startCpu}
-          onHome={goHome}
-          onRules={() => setShowRules(true)}
-        />
+        <TableScreen>
+          <ResultScreen>
+            <GameTable
+              hand={game.hands[0]}
+              indicator={game.indicator}
+              discards={game.discards}
+              counts={game.counts}
+              turn={game.turn}
+              remainingTiles={game.reserves[0]}
+              selectedDiscard={localDiscard}
+              opponentName="电脑牌手"
+              pendingRon={game.pendingRon === 0}
+              pendingScore={game.pendingScore}
+              furiten={furiten}
+              result={game.result}
+              baseScore={baseScore}
+              onSelectDiscard={setLocalDiscard}
+              onDiscard={(id) => performLocalDiscard(0, id)}
+              onRon={localRon}
+              onPass={localPass}
+              onAgain={startCpu}
+              onHome={goHome}
+              onRules={() => setShowRules(true)}
+            />
+          </ResultScreen>
+        </TableScreen>
       );
     }
     if (screen === 'online' && !remote)
       return (
-        <OnlineLobby
-          baseScore={baseScore}
-          onBack={goHome}
-          onCreate={createRoom}
-          onJoin={joinRoom}
-          busy={onlineBusy}
-          error={onlineError}
-          onRules={() => setShowRules(true)}
-        />
+        <OnlineScreen>
+          <OnlineLobby
+            baseScore={baseScore}
+            onBack={goHome}
+            onCreate={createRoom}
+            onJoin={joinRoom}
+            busy={onlineBusy}
+            error={onlineError}
+            onRules={() => setShowRules(true)}
+          />
+        </OnlineScreen>
       );
     if (
       screen === 'online' &&
@@ -1388,68 +1404,82 @@ export default function GameClient() {
       (remote.phase === 'waiting' || remote.phase === 'selecting')
     ) {
       return (
-        <SelectionScreen
-          pool={remote.ownPool ?? []}
-          selected={remoteSelected}
-          indicator={remote.indicator}
-          wind={remote.seat === 0 ? 'east' : 'west'}
-          title={remote.opponentJoined ? '对手已入座，组建你的听牌。' : '牌桌已开，等待朋友入座。'}
-          subtitle={
-            remote.opponentJoined
-              ? remote.opponentReady
-                ? '对手已经选好牌，正在等你。'
-                : '双方独立选牌，确认后等待对手准备。'
-              : '把房间码复制给朋友；等待期间你可以先选好 13 张。'
-          }
-          readyLabel="确认手牌"
-          waiting={remote.ownReady}
-          onToggle={(id) => toggleSelected(id, setRemoteSelected)}
-          onRecommend={remoteSuggest}
-          onReady={remoteReady}
-          onBack={goHome}
-          onRules={() => setShowRules(true)}
-          roomCode={remote.code}
-        />
+        <OnlineScreen>
+          <SelectionScreenPage>
+            <SelectionScreen
+              pool={remote.ownPool ?? []}
+              selected={remoteSelected}
+              indicator={remote.indicator}
+              wind={remote.seat === 0 ? 'east' : 'west'}
+              title={
+                remote.opponentJoined ? '对手已入座，组建你的听牌。' : '牌桌已开，等待朋友入座。'
+              }
+              subtitle={
+                remote.opponentJoined
+                  ? remote.opponentReady
+                    ? '对手已经选好牌，正在等你。'
+                    : '双方独立选牌，确认后等待对手准备。'
+                  : '把房间码复制给朋友；等待期间你可以先选好 13 张。'
+              }
+              readyLabel="确认手牌"
+              waiting={remote.ownReady}
+              onToggle={(id) => toggleSelected(id, setRemoteSelected)}
+              onRecommend={remoteSuggest}
+              onReady={remoteReady}
+              onBack={goHome}
+              onRules={() => setShowRules(true)}
+              roomCode={remote.code}
+            />
+          </SelectionScreenPage>
+        </OnlineScreen>
       );
     }
     if (screen === 'online' && remote && remote.ownHand) {
       return (
-        <GameTable
-          hand={remote.ownHand}
-          indicator={remote.indicator}
-          discards={remote.seat === 0 ? remote.discards : [remote.discards[1], remote.discards[0]]}
-          counts={remote.seat === 0 ? remote.counts : [remote.counts[1], remote.counts[0]]}
-          turn={(remote.seat === 0 ? remote.turn : 1 - remote.turn) as Seat}
-          remainingTiles={remote.ownRemaining ?? []}
-          selectedDiscard={remoteDiscard}
-          opponentName="联机牌友"
-          pendingRon={remote.canRon}
-          pendingScore={remote.pendingScore}
-          furiten={remote.permanentFuriten || remote.temporaryFuriten}
-          result={
-            remote.result
-              ? remote.seat === 0
-                ? remote.result
-                : {
-                    ...remote.result,
-                    winner:
-                      remote.result.winner === undefined
-                        ? undefined
-                        : ((1 - remote.result.winner) as Seat),
-                  }
-              : null
-          }
-          baseScore={remote.baseScore}
-          onSelectDiscard={setRemoteDiscard}
-          onDiscard={(id) => remoteAction('discard', { tileId: id })}
-          onRon={() => remoteAction('ron')}
-          onPass={() => remoteAction('pass')}
-          onAgain={goHome}
-          onHome={goHome}
-          onRules={() => setShowRules(true)}
-          roomCode={remote.code}
-          waitingText={onlineError || undefined}
-        />
+        <OnlineScreen>
+          <TableScreen>
+            <ResultScreen>
+              <GameTable
+                hand={remote.ownHand}
+                indicator={remote.indicator}
+                discards={
+                  remote.seat === 0 ? remote.discards : [remote.discards[1], remote.discards[0]]
+                }
+                counts={remote.seat === 0 ? remote.counts : [remote.counts[1], remote.counts[0]]}
+                turn={(remote.seat === 0 ? remote.turn : 1 - remote.turn) as Seat}
+                remainingTiles={remote.ownRemaining ?? []}
+                selectedDiscard={remoteDiscard}
+                opponentName="联机牌友"
+                pendingRon={remote.canRon}
+                pendingScore={remote.pendingScore}
+                furiten={remote.permanentFuriten || remote.temporaryFuriten}
+                result={
+                  remote.result
+                    ? remote.seat === 0
+                      ? remote.result
+                      : {
+                          ...remote.result,
+                          winner:
+                            remote.result.winner === undefined
+                              ? undefined
+                              : ((1 - remote.result.winner) as Seat),
+                        }
+                    : null
+                }
+                baseScore={remote.baseScore}
+                onSelectDiscard={setRemoteDiscard}
+                onDiscard={(id) => remoteAction('discard', { tileId: id })}
+                onRon={() => remoteAction('ron')}
+                onPass={() => remoteAction('pass')}
+                onAgain={goHome}
+                onHome={goHome}
+                onRules={() => setShowRules(true)}
+                roomCode={remote.code}
+                waitingText={onlineError || undefined}
+              />
+            </ResultScreen>
+          </TableScreen>
+        </OnlineScreen>
       );
     }
     return null;
@@ -1471,22 +1501,24 @@ export default function GameClient() {
       {content}
       {showRules && <RulesModal onClose={() => setShowRules(false)} />}
       {showAuth && (
-        <AuthModal
-          onClose={() => {
-            setShowAuth(false);
-            setAfterAuthOnline(false);
-          }}
-          onSuccess={(user) => {
-            setAuthUser(user);
-            setShowAuth(false);
-            if (afterAuthOnline) {
-              setScreen('online');
-              setRemote(null);
-              setCredentials(null);
-            }
-            setAfterAuthOnline(false);
-          }}
-        />
+        <AuthScreen>
+          <AuthModal
+            onClose={() => {
+              setShowAuth(false);
+              setAfterAuthOnline(false);
+            }}
+            onSuccess={(user) => {
+              setAuthUser(user);
+              setShowAuth(false);
+              if (afterAuthOnline) {
+                setScreen('online');
+                setRemote(null);
+                setCredentials(null);
+              }
+              setAfterAuthOnline(false);
+            }}
+          />
+        </AuthScreen>
       )}
     </AppContext.Provider>
   );
