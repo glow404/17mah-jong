@@ -1,6 +1,6 @@
 import { MahjongTile } from '../../components/MahjongTile';
-import { doraFromIndicator, tileText } from '../../lib/mahjong';
-import type { GameResult } from '../game/localGameReducer';
+import type { GameResult } from '../../lib/contracts/mahjong';
+import { doraFromIndicator, tileText } from '../../lib/rules/tiles';
 
 export function ResultScreen({
   result,

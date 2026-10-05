@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import { GameActionBar } from '../../components/GameActionBar';
 import { MahjongTile } from '../../components/MahjongTile';
-import { describeWaits, doraFromIndicator, sortTiles, tileText, tileType } from '../../lib/mahjong';
+import { describeWaits } from '../../lib/rules/scoring';
+import { doraFromIndicator, sortTiles, tileText, tileType } from '../../lib/rules/tiles';
 
 export interface SelectionScreenProps {
   pool: number[];

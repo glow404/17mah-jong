@@ -1,14 +1,8 @@
 import type { ReactNode } from 'react';
 import { DiscardRiver } from '../../components/DiscardRiver';
 import { MahjongTile } from '../../components/MahjongTile';
-import {
-  doraFromIndicator,
-  sortTiles,
-  tileText,
-  tileType,
-  type ScoreResult,
-} from '../../lib/mahjong';
-import type { GameResult, Seat } from '../game/localGameReducer';
+import { doraFromIndicator, sortTiles, tileText, tileType } from '../../lib/rules/tiles';
+import type { GameResult, ScoreResult, Seat } from '../../lib/contracts/mahjong';
 import { ResultScreen } from './ResultScreen';
 
 export interface TableScreenProps {

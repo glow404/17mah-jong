@@ -65,8 +65,8 @@ test('牌面工具保持实体牌、图案和排序的一致性', () => {
   assert.deepEqual(tileLabel(0), { main: '一', suit: '万', kind: 'man' });
   assert.equal(tileText(27), '东');
   assert.deepEqual(sortTiles([8, 0, 7, 4]), [0, 4, 7, 8]);
-  assert.equal(shuffle([]).length, 0);
-  assert.equal(createWall().length, 136);
+  assert.equal(shuffle([], Math.random).length, 0);
+  assert.equal(createWall(Math.random).length, 136);
 });
 
 test('牌型判断区分合法和牌、非法数量与等待牌说明', () => {

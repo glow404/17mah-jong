@@ -6,6 +6,7 @@ import {
   isWinningHand,
   limitFor,
   createWall,
+  createSeededRandom,
   type LimitTier,
 } from '../lib/mahjong';
 
@@ -231,15 +232,11 @@ test('振听状态覆盖永久振听、临时振听和解除条件', () => {
 });
 
 test('固定种子随机牌墙始终是 136 张且不会出现第五张同牌', () => {
-  const seededRandom = (seed: number) => () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 0x100000000;
-  };
-  const first = createWall(seededRandom(17));
-  const second = createWall(seededRandom(17));
+  const first = createWall(createSeededRandom(17));
+  const second = createWall(createSeededRandom(17));
   assert.deepEqual(first, second);
   for (let seed = 0; seed < 100; seed += 1) {
-    const wall = createWall(seededRandom(seed));
+    const wall = createWall(createSeededRandom(seed));
     assert.equal(wall.length, 136);
     assert.equal(new Set(wall).size, 136);
     const counts = new Map<number, number>();
