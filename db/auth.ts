@@ -90,6 +90,15 @@ export async function ensureAuthTables() {
     db.prepare('CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)'),
     db.prepare('PRAGMA optimize'),
   ]);
+  await db.prepare('DELETE FROM sessions WHERE expires_at <= ?').bind(Date.now()).run();
+}
+
+export async function deleteAllSessions(userId: string) {
+  await database().prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId).run();
+}
+
+export async function deleteAccount(userId: string) {
+  await database().prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
 }
 
 export async function registerUser(emailInput: string, password: string) {

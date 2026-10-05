@@ -9,7 +9,7 @@
 [![Release](https://img.shields.io/github/v/release/glow404/17mah-jong?include_prereleases&sort=semver)](https://github.com/glow404/17mah-jong/releases)
 [![License: MIT](https://img.shields.io/github/license/glow404/17mah-jong)](LICENSE)
 
-[在线试玩](https://mah-jong-duel-17.vuhanhst943546.chatgpt.site) · [规则说明](#完整游戏规则) · [本地开发](#本地开发) · [Roadmap](OPEN_SOURCE_ROADMAP.md) · [参与贡献](CONTRIBUTING.md)
+[在线试玩](https://mah-jong-duel-17.vuhanhst943546.chatgpt.site) · [规则说明](#完整游戏规则) · [本地开发](#本地开发) · [隐私政策](PRIVACY.md) · [Roadmap](OPEN_SOURCE_ROADMAP.md) · [参与贡献](CONTRIBUTING.md)
 
 **当前状态：v0.1.0 Preview，可完整进行电脑对战和房间码联机对战，仍在积极开发中。**
 

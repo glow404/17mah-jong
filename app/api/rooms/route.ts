@@ -16,6 +16,12 @@ import {
   waitTypes,
   type ScoreResult,
 } from '../../../lib/mahjong';
+import {
+  enforceRateLimit,
+  parseJsonObject,
+  requireSameOrigin,
+  secureRandomIndex,
+} from '../../../lib/security';
 
 type Seat = 0 | 1;
 type GameResult = {
@@ -50,9 +56,7 @@ interface RoomState {
 
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const randomCode = () =>
-  Array.from({ length: 6 }, () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)]).join(
-    '',
-  );
+  Array.from({ length: 6 }, () => CODE_CHARS[secureRandomIndex(CODE_CHARS.length)]).join('');
 const token = () => crypto.randomUUID().replaceAll('-', '');
 
 function phase(room: RoomState) {
@@ -170,23 +174,26 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    requireSameOrigin(request);
+    enforceRateLimit(request, 'rooms', 20);
     await ensureRoomsTable();
     await ensureAuthTables();
     const user = await getSessionUser(request);
     if (!user) return Response.json({ error: '请先登录后再进行联机对战' }, { status: 401 });
-    const body = (await request.json()) as { action?: string; code?: string; baseScore?: number };
-    if (body.action === 'create') {
+    const body = await parseJsonObject(request);
+    const action = typeof body.action === 'string' ? body.action : '';
+    if (action === 'create') {
       const allowedScores = new Set([1000, 5000, 10000]);
       const room = makeRoom(
-        allowedScores.has(body.baseScore ?? 0) ? body.baseScore! : 5000,
+        allowedScores.has(body.baseScore as number) ? (body.baseScore as number) : 5000,
         user.id,
       );
       while (await readRoom(room.code)) room.code = randomCode();
       await createRoomRecord(room.code, room);
       return Response.json({ code: room.code, token: room.tokens[0] }, { status: 201 });
     }
-    if (body.action === 'join') {
-      const code = (body.code ?? '').trim().toUpperCase();
+    if (action === 'join') {
+      const code = (typeof body.code === 'string' ? body.code : '').trim().toUpperCase();
       const room = await readRoom<RoomState>(code);
       if (!room) return Response.json({ error: '没有找到这个房间' }, { status: 404 });
       if (room.tokens[1]) return Response.json({ error: '房间已经坐满' }, { status: 409 });
@@ -211,26 +218,29 @@ export async function POST(request: Request) {
 
 export async function PATCH(request: Request) {
   try {
+    requireSameOrigin(request);
+    enforceRateLimit(request, 'game', 60);
     await ensureRoomsTable();
     await ensureAuthTables();
     const user = await getSessionUser(request);
     if (!user) return Response.json({ error: '登录状态已经失效，请重新登录' }, { status: 401 });
-    const body = (await request.json()) as {
-      action?: string;
-      code?: string;
-      token?: string;
-      selected?: number[];
-      tileId?: number;
-    };
-    const code = (body.code ?? '').toUpperCase();
-    const loaded = await loadAuthorized(code, body.token ?? '', user.id);
+    const body = await parseJsonObject(request);
+    const code = (typeof body.code === 'string' ? body.code : '').toUpperCase();
+    const loaded = await loadAuthorized(
+      code,
+      typeof body.token === 'string' ? body.token : '',
+      user.id,
+    );
     if ('error' in loaded) return Response.json({ error: loaded.error }, { status: loaded.status });
     const { room, seat } = loaded;
     const expectedVersion = room.version;
 
     if (body.action === 'select') {
       if (room.hands[seat]) return Response.json({ error: '手牌已经确认' }, { status: 409 });
-      const selected = body.selected ?? [];
+      const selected =
+        Array.isArray(body.selected) && body.selected.every((value) => Number.isInteger(value))
+          ? (body.selected as number[])
+          : [];
       const unique = new Set(selected);
       const poolSet = new Set(room.pools[seat]);
       if (selected.length !== 13 || unique.size !== 13 || selected.some((id) => !poolSet.has(id)))
@@ -250,7 +260,8 @@ export async function PATCH(request: Request) {
         room.counts[seat] >= 17
       )
         return Response.json({ error: '现在不能舍牌' }, { status: 409 });
-      const tileIndex = room.reserves[seat].indexOf(body.tileId ?? -1);
+      const tileId = typeof body.tileId === 'number' ? body.tileId : -1;
+      const tileIndex = room.reserves[seat].indexOf(tileId);
       if (tileIndex < 0)
         return Response.json({ error: '请选择自己剩余 21 张牌中的一张' }, { status: 400 });
       const [physicalTile] = room.reserves[seat].splice(tileIndex, 1);
