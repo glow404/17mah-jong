@@ -1,15 +1,10 @@
-import { evaluateWin, isFuriten, tileType, type ScoreResult } from '../../lib/mahjong';
+import { isFuriten } from '../../lib/rules/furiten';
+import { evaluateWin } from '../../lib/rules/scoring';
+import { tileType } from '../../lib/rules/tiles';
+import type { ScoreResult } from '../../lib/contracts/mahjong';
+import type { GameResult, Seat } from '../../lib/contracts/mahjong';
 
-export type Seat = 0 | 1;
-
-export interface GameResult {
-  kind: 'ron' | 'draw';
-  winner?: Seat;
-  score?: ScoreResult;
-  payment?: number;
-  winnerHand?: number[];
-  uraIndicator?: number;
-}
+export type { GameResult, Seat } from '../../lib/contracts/mahjong';
 
 export interface LocalGame {
   hands: [number[], number[]];

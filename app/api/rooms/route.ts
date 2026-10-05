@@ -7,31 +7,18 @@
  */
 import { createRoomRecord, ensureRoomsTable, readRoom, saveRoom } from '../../../db/rooms';
 import { ensureAuthTables, getSessionUser } from '../../../db/auth';
-import {
-  createWall,
-  evaluateWin,
-  isFuriten,
-  suggestTenpaiHand,
-  tileType,
-  waitTypes,
-  type ScoreResult,
-} from '../../../lib/mahjong';
+import type { GameResult, RoomSnapshot, ScoreResult, Seat } from '../../../lib/contracts/mahjong';
+import { isFuriten } from '../../../lib/rules/furiten';
+import { evaluateWin } from '../../../lib/rules/scoring';
+import { suggestTenpaiHand } from '../../../lib/rules/selection';
+import { createWall, tileType } from '../../../lib/rules/tiles';
+import { waitTypes } from '../../../lib/rules/hand';
 import {
   enforceRateLimit,
   parseJsonObject,
   requireSameOrigin,
   secureRandomIndex,
 } from '../../../lib/security';
-
-type Seat = 0 | 1;
-type GameResult = {
-  kind: 'ron' | 'draw';
-  winner?: Seat;
-  score?: ScoreResult;
-  payment?: number;
-  winnerHand?: number[];
-  uraIndicator?: number;
-};
 
 interface RoomState {
   code: string;
@@ -72,7 +59,7 @@ function seatFor(room: RoomState, candidate: string) {
   return null;
 }
 
-function publicRoom(room: RoomState, seat: Seat) {
+function publicRoom(room: RoomState, seat: Seat): RoomSnapshot {
   const currentPhase = phase(room);
   const ownHand = room.hands[seat];
   return {
@@ -106,7 +93,7 @@ function publicRoom(room: RoomState, seat: Seat) {
 
 function makeRoom(baseScore: number, userId: string): RoomState {
   for (let attempt = 0; attempt < 24; attempt += 1) {
-    const wall = createWall();
+    const wall = createWall(Math.random);
     const pools: [number[], number[]] = [wall.slice(0, 34), wall.slice(34, 68)];
     const indicator = tileType(wall[68]);
     if (

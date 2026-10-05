@@ -3,7 +3,7 @@
  *
  * 页面容器负责全局状态、操作回调和本地/联机模式切换。
  * 首页、选牌、牌桌、结算、认证和联机 UI 分别位于 screens/ 模块；
- * 牌型判断与计分位于 lib/mahjong.ts。
+ * 规则能力由 lib/rules 下的纯函数模块提供。
  */
 'use client';
 
@@ -17,7 +17,11 @@ import {
   useState,
 } from 'react';
 import { GameAudio } from '../lib/audio';
-import { localGameReducer, type GameResult, type Seat } from './game/localGameReducer';
+import type { RoomSnapshot, Seat } from '../lib/contracts/mahjong';
+import { isFuriten } from '../lib/rules/furiten';
+import { createWall, sortTiles, tileType } from '../lib/rules/tiles';
+import { suggestTenpaiHand } from '../lib/rules/selection';
+import { localGameReducer } from './game/localGameReducer';
 import { useRemotePolling } from '../hooks/useRemotePolling';
 import { AuthScreen } from './screens/AuthScreen';
 import type { AuthUser } from './screens/AuthScreen';
@@ -25,14 +29,6 @@ import { HomeScreen } from './screens/HomeScreen';
 import { OnlineScreen } from './screens/OnlineScreen';
 import { SelectionScreenPage } from './screens/SelectionScreen';
 import { TableScreen } from './screens/TableScreen';
-import {
-  createWall,
-  isFuriten,
-  sortTiles,
-  suggestTenpaiHand,
-  tileType,
-  type ScoreResult,
-} from '../lib/mahjong';
 
 type Screen = 'home' | 'select' | 'playing' | 'online';
 interface Deal {
@@ -40,32 +36,6 @@ interface Deal {
   suggestions: [number[], number[]];
   indicator: number;
   uraIndicator: number;
-}
-
-interface RemoteSnapshot {
-  code: string;
-  phase: 'waiting' | 'selecting' | 'playing' | 'finished';
-  seat: Seat;
-  opponentJoined: boolean;
-  opponentReady: boolean;
-  ownReady: boolean;
-  ownPool?: number[];
-  ownHand?: number[];
-  indicator: number;
-  baseScore: number;
-  turn: Seat;
-  discards: [number[], number[]];
-  counts: [number, number];
-  reserveCounts: [number, number];
-  ownRemaining?: number[];
-  pendingRon: Seat | null;
-  canRon: boolean;
-  pendingScore?: ScoreResult | null;
-  temporaryFuriten: boolean;
-  permanentFuriten: boolean;
-  lastDiscard: { seat: Seat; tile: number } | null;
-  result: GameResult | null;
-  version: number;
 }
 
 const AppContext = createContext<{
@@ -216,7 +186,7 @@ export default function GameClient() {
   const [deal, setDeal] = useState<Deal | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [game, dispatchGame] = useReducer(localGameReducer, null);
-  const [remote, setRemote] = useState<RemoteSnapshot | null>(null);
+  const [remote, setRemote] = useState<RoomSnapshot | null>(null);
   const [credentials, setCredentials] = useState<{ code: string; token: string } | null>(null);
   const [onlineBusy, setOnlineBusy] = useState(false);
   const [onlineError, setOnlineError] = useState('');
@@ -249,7 +219,7 @@ export default function GameClient() {
 
   const makeDeal = useCallback(() => {
     for (let attempt = 0; attempt < 18; attempt += 1) {
-      const wall = createWall();
+      const wall = createWall(Math.random);
       const pools: [number[], number[]] = [wall.slice(0, 34), wall.slice(34, 68)];
       const indicator = tileType(wall[68]);
       const east = suggestTenpaiHand(pools[0], indicator, 'east');
@@ -348,7 +318,7 @@ export default function GameClient() {
       const response = await fetch(`/api/rooms?code=${creds.code}&token=${creds.token}`, {
         cache: 'no-store',
       });
-      const data = (await response.json()) as RemoteSnapshot & { error?: string };
+      const data = (await response.json()) as RoomSnapshot & { error?: string };
       if (!response.ok) throw new Error(data.error || '房间同步失败');
       setRemote(data);
       if (data.ownPool && !remoteSelected.length && data.ownReady) setRemoteSelected([]);
