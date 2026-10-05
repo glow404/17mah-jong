@@ -1222,6 +1222,18 @@ button.game-tile:hover:not(:disabled) {
   color: rgba(255, 255, 255, 0.55);
   font-size: 11px;
 }
+.turn-deadline {
+  color: #f2d18c;
+  font-size: 10px;
+  text-align: center;
+}
+.surrender-button {
+  width: auto;
+  min-width: 54px;
+  padding: 0 10px;
+  font-size: 11px;
+  white-space: nowrap;
+}
 .discard-button {
   min-width: 130px;
   height: 45px;

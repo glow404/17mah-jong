@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { DiscardRiver } from '../../components/DiscardRiver';
 import { MahjongTile } from '../../components/MahjongTile';
@@ -16,6 +17,9 @@ export interface TableScreenProps {
   opponentName: string;
   pendingRon: boolean;
   pendingScore?: ScoreResult | null;
+  actionBusy?: boolean;
+  turnDeadlineAt?: number | null;
+  canSurrender?: boolean;
   furiten: boolean;
   result: GameResult | null;
   baseScore: number;
@@ -23,6 +27,7 @@ export interface TableScreenProps {
   onDiscard: (id: number) => void;
   onRon: () => void;
   onPass: () => void;
+  onSurrender?: () => void;
   onAgain: () => void;
   onHome: () => void;
   header: ReactNode;
@@ -40,6 +45,9 @@ export function TableScreen({
   opponentName,
   pendingRon,
   pendingScore,
+  actionBusy = false,
+  turnDeadlineAt = null,
+  canSurrender = false,
   furiten,
   result,
   baseScore,
@@ -47,11 +55,20 @@ export function TableScreen({
   onDiscard,
   onRon,
   onPass,
+  onSurrender,
   onAgain,
   onHome,
   header,
   waitingText,
 }: TableScreenProps) {
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    if (!turnDeadlineAt || result) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [turnDeadlineAt, result]);
+  const secondsLeft = turnDeadlineAt ? Math.max(0, Math.ceil((turnDeadlineAt - now) / 1000)) : null;
+
   return (
     <main className="game-shell battle-shell" data-screen="table">
       {header}
@@ -83,6 +100,11 @@ export function TableScreen({
             <b>{String(Math.max(counts[0], counts[1])).padStart(2, '0')}</b>
             <small>各余 {Math.max(0, 17 - Math.max(counts[0], counts[1]))} 巡</small>
           </div>
+          {secondsLeft !== null && (
+            <small className="turn-deadline" role="timer" aria-live="off">
+              操作剩余 {now === 0 ? '…' : secondsLeft} 秒
+            </small>
+          )}
           <div className="battle-dora">
             <small>宝牌指示</small>
             <MahjongTile tile={indicator} small />
@@ -112,6 +134,7 @@ export function TableScreen({
                   tile={tileType(id)}
                   small
                   selected={selectedDiscard === id}
+                  disabled={actionBusy}
                   onClick={() => onSelectDiscard(id)}
                 />
               ))}
@@ -136,7 +159,7 @@ export function TableScreen({
                   <button
                     className="discard-button"
                     type="button"
-                    disabled={turn !== 0 || pendingRon || Boolean(result)}
+                    disabled={turn !== 0 || pendingRon || Boolean(result) || actionBusy}
                     onClick={() => onDiscard(selectedDiscard)}
                   >
                     {counts[0] === 0 ? '打出并立直' : '打出此牌'} <b>→</b>
@@ -144,6 +167,16 @@ export function TableScreen({
                 </>
               ) : (
                 <p>{turn === 0 ? '请从上方剩余牌中选择一张' : '可先选择下一张舍牌'}</p>
+              )}
+              {canSurrender && onSurrender && (
+                <button
+                  className="pass-button surrender-button"
+                  type="button"
+                  disabled={actionBusy || Boolean(result)}
+                  onClick={onSurrender}
+                >
+                  认输
+                </button>
               )}
             </div>
           </div>
@@ -159,10 +192,10 @@ export function TableScreen({
             <span>{pendingScore.yaku.join(' · ')}</span>
           </div>
           <MahjongTile tile={pendingScore.winningTile} />
-          <button className="ron-button" type="button" onClick={onRon}>
+          <button className="ron-button" type="button" disabled={actionBusy} onClick={onRon}>
             荣和
           </button>
-          <button className="pass-button" type="button" onClick={onPass}>
+          <button className="pass-button" type="button" disabled={actionBusy} onClick={onPass}>
             放弃
           </button>
         </div>

@@ -17,7 +17,7 @@ jobs:
   quality-gate:
     name: Lint, typecheck, test, and build
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     steps:
       - name: Check out repository
@@ -60,6 +60,25 @@ jobs:
 
       - name: Run E2E smoke test
         run: npm run test:e2e
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Apply local migrations and run weak-network browser tests
+        run: |
+          npm run db:migrate:local
+          npm run dev -- --host 127.0.0.1 --port 3000 > "$RUNNER_TEMP/17mah-jong-dev.log" 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:3000/ > /dev/null; then
+              E2E_BASE_URL=http://127.0.0.1:3000 npm run test:e2e:playwright
+              exit $?
+            fi
+            sleep 1
+          done
+          cat "$RUNNER_TEMP/17mah-jong-dev.log"
+          exit 1
 
       - name: Scan repository for secrets
         if: ${{ always() }}

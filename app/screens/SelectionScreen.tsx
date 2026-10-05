@@ -13,6 +13,7 @@ export interface SelectionScreenProps {
   subtitle: string;
   readyLabel: string;
   waiting?: boolean;
+  connectionMessage?: string;
   onToggle: (id: number) => void;
   onRecommend: () => void;
   onReady: () => void;
@@ -29,6 +30,7 @@ export function SelectionScreenPage({
   subtitle,
   readyLabel,
   waiting,
+  connectionMessage,
   onToggle,
   onRecommend,
   onReady,
@@ -42,6 +44,11 @@ export function SelectionScreenPage({
   return (
     <main className="game-shell selection-shell" data-screen="selection">
       {header}
+      {connectionMessage && (
+        <p className="online-error" role="status" aria-live="polite">
+          {connectionMessage}
+        </p>
+      )}
       <section className="selection-header">
         <div>
           <p className="eyebrow">

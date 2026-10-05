@@ -22,6 +22,13 @@
       "when": 1786867221776,
       "tag": "0002_yielding_matthew_murdock",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1791176608646,
+      "tag": "0003_careful_colossus",
+      "breakpoints": true
     }
   ]
 }

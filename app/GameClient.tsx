@@ -17,12 +17,13 @@ import {
   useState,
 } from 'react';
 import { GameAudio } from '../lib/audio';
-import type { RoomSnapshot, Seat } from '../lib/contracts/mahjong';
+import type { GameResult, RoomSnapshot, Seat } from '../lib/contracts/mahjong';
+import { GAME_PROTOCOL_VERSION } from '../lib/contracts/protocol';
 import { isFuriten } from '../lib/rules/furiten';
 import { createWall, sortTiles, tileType } from '../lib/rules/tiles';
 import { suggestTenpaiHand } from '../lib/rules/selection';
 import { localGameReducer } from './game/localGameReducer';
-import { useRemotePolling } from '../hooks/useRemotePolling';
+import { useRemotePolling, type RemoteConnectionStatus } from '../hooks/useRemotePolling';
 import { AuthScreen } from './screens/AuthScreen';
 import type { AuthUser } from './screens/AuthScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -31,11 +32,23 @@ import { SelectionScreenPage } from './screens/SelectionScreen';
 import { TableScreen } from './screens/TableScreen';
 
 type Screen = 'home' | 'select' | 'playing' | 'online';
+const ROOM_SESSION_KEY = '17mah-jong:active-room:v1';
 interface Deal {
   pools: [number[], number[]];
   suggestions: [number[], number[]];
   indicator: number;
   uraIndicator: number;
+}
+
+function orientResultForSeat(result: GameResult, seat: Seat): GameResult {
+  if (seat === 0 || result.kind === 'draw') return result;
+  if (result.kind === 'forfeit')
+    return {
+      ...result,
+      winner: (1 - result.winner) as Seat,
+      loser: (1 - result.loser) as Seat,
+    };
+  return { ...result, winner: (1 - result.winner) as Seat };
 }
 
 const AppContext = createContext<{
@@ -188,8 +201,11 @@ export default function GameClient() {
   const [game, dispatchGame] = useReducer(localGameReducer, null);
   const [remote, setRemote] = useState<RoomSnapshot | null>(null);
   const [credentials, setCredentials] = useState<{ code: string; token: string } | null>(null);
+  const [roomStorageReady, setRoomStorageReady] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<RemoteConnectionStatus>('connecting');
   const [onlineBusy, setOnlineBusy] = useState(false);
   const [onlineError, setOnlineError] = useState('');
+  const [remoteActionBusy, setRemoteActionBusy] = useState(false);
   const [remoteSelected, setRemoteSelected] = useState<number[]>([]);
   const [localDiscard, setLocalDiscard] = useState<number | null>(null);
   const [remoteDiscard, setRemoteDiscard] = useState<number | null>(null);
@@ -201,6 +217,7 @@ export default function GameClient() {
   const localSoundCount = useRef(0);
   const remoteSoundCount = useRef(0);
   const resultSoundKey = useRef('');
+  const remoteActionLock = useRef(false);
 
   const ensureAudio = useCallback(() => {
     audioRef.current ??= new GameAudio();
@@ -216,6 +233,38 @@ export default function GameClient() {
       })
       .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const stored = sessionStorage.getItem(ROOM_SESSION_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored) as { code?: unknown; token?: unknown };
+          if (
+            typeof parsed.code === 'string' &&
+            /^[A-Z0-9]{6}$/i.test(parsed.code) &&
+            typeof parsed.token === 'string' &&
+            parsed.token.length >= 16 &&
+            parsed.token.length <= 128
+          ) {
+            setCredentials({ code: parsed.code.toUpperCase(), token: parsed.token });
+            setScreen('online');
+          } else sessionStorage.removeItem(ROOM_SESSION_KEY);
+        }
+      } catch {
+        sessionStorage.removeItem(ROOM_SESSION_KEY);
+      } finally {
+        setRoomStorageReady(true);
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!roomStorageReady) return;
+    if (credentials) sessionStorage.setItem(ROOM_SESSION_KEY, JSON.stringify(credentials));
+    else sessionStorage.removeItem(ROOM_SESSION_KEY);
+  }, [credentials, roomStorageReady]);
 
   const makeDeal = useCallback(() => {
     for (let attempt = 0; attempt < 18; attempt += 1) {
@@ -317,14 +366,43 @@ export default function GameClient() {
       if (!creds) return;
       const response = await fetch(`/api/rooms?code=${creds.code}&token=${creds.token}`, {
         cache: 'no-store',
+        headers: { 'X-Game-Protocol': String(GAME_PROTOCOL_VERSION) },
       });
       const data = (await response.json()) as RoomSnapshot & { error?: string };
-      if (!response.ok) throw new Error(data.error || '房间同步失败');
-      setRemote(data);
+      if (!response.ok) {
+        if (response.status === 404 || response.status === 410) {
+          setCredentials(null);
+          setRemote(null);
+        }
+        if (response.status === 401) {
+          setAuthUser(null);
+          setShowAuth(true);
+        }
+        throw new Error(data.error || '房间同步失败');
+      }
+      setRemote((current) => (current && current.version > data.version ? current : data));
+      setOnlineError('');
       if (data.ownPool && !remoteSelected.length && data.ownReady) setRemoteSelected([]);
+      return data;
     },
     [credentials, remoteSelected.length],
   );
+
+  const heartbeatRemote = useCallback(async () => {
+    if (!credentials) return;
+    const response = await fetch('/api/rooms', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+      },
+      body: JSON.stringify({ ...credentials, action: 'heartbeat' }),
+    });
+    if (!response.ok) {
+      const data = (await response.json()) as { error?: string };
+      throw new Error(data.error || '联机心跳失败');
+    }
+  }, [credentials]);
 
   const createRoom = async () => {
     setOnlineBusy(true);
@@ -332,7 +410,10 @@ export default function GameClient() {
     try {
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+        },
         body: JSON.stringify({ action: 'create', baseScore }),
       });
       const data = (await response.json()) as { code?: string; token?: string; error?: string };
@@ -354,7 +435,10 @@ export default function GameClient() {
     try {
       const response = await fetch('/api/rooms', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+        },
         body: JSON.stringify({ action: 'join', code }),
       });
       const data = (await response.json()) as { code?: string; token?: string; error?: string };
@@ -371,31 +455,89 @@ export default function GameClient() {
   };
 
   const remoteAction = async (action: string, payload: Record<string, unknown> = {}) => {
-    if (!credentials) return;
+    if (!credentials || !remote || remoteActionLock.current) return;
+    remoteActionLock.current = true;
+    setRemoteActionBusy(true);
     setOnlineError('');
-    const response = await fetch('/api/rooms', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...credentials, action, ...payload }),
-    });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
-      if (response.status === 401) {
-        setAuthUser(null);
-        setShowAuth(true);
+    const actionId = crypto.randomUUID();
+    try {
+      let actionVersion = remote.version;
+      for (let conflictAttempt = 0; conflictAttempt < 2; conflictAttempt += 1) {
+        const requestBody = JSON.stringify({
+          ...credentials,
+          action,
+          actionId,
+          version: actionVersion,
+          ...payload,
+        });
+        let response: Response | null = null;
+        let lastError: unknown;
+        for (let networkAttempt = 0; networkAttempt < 2; networkAttempt += 1) {
+          try {
+            response = await fetch('/api/rooms', {
+              method: 'PATCH',
+              headers: {
+                'Content-Type': 'application/json',
+                'X-Game-Protocol': String(GAME_PROTOCOL_VERSION),
+              },
+              body: requestBody,
+            });
+            if (response.status < 500 || networkAttempt === 1) break;
+          } catch (error) {
+            lastError = error;
+            if (networkAttempt === 1) throw error;
+          }
+          await new Promise((resolve) => window.setTimeout(resolve, 250));
+        }
+        if (!response) throw lastError ?? new Error('网络请求失败');
+        const data = (await response.json()) as RoomSnapshot & { error?: string };
+        if (!response.ok) {
+          if (response.status === 401) {
+            setAuthUser(null);
+            setShowAuth(true);
+          }
+          if (response.status === 409 && conflictAttempt === 0) {
+            const latest = await fetchRemote();
+            if (latest && latest.phase !== 'finished') {
+              actionVersion = latest.version;
+              continue;
+            }
+          }
+          setOnlineError(data.error || '操作失败，请重试');
+          return;
+        }
+        setRemote((current) => (current && current.version > data.version ? current : data));
+        if (action === 'discard') setRemoteDiscard(null);
+        return;
       }
-      setOnlineError(data.error || '操作失败，请重试');
-      return;
+    } catch (error) {
+      setOnlineError(error instanceof Error ? error.message : '操作失败，请检查网络后重试');
+    } finally {
+      remoteActionLock.current = false;
+      setRemoteActionBusy(false);
     }
-    if (action === 'discard') setRemoteDiscard(null);
-    await fetchRemote();
   };
+
+  const onRemotePollError = useCallback((error: unknown) => {
+    setOnlineError(error instanceof Error ? error.message : '同步失败');
+  }, []);
 
   useRemotePolling({
     enabled: screen === 'online' && Boolean(credentials),
+    heartbeat: heartbeatRemote,
     poll: fetchRemote,
-    onError: (error) => setOnlineError(error instanceof Error ? error.message : '同步失败'),
+    onError: onRemotePollError,
+    onConnectionChange: setConnectionStatus,
   });
+
+  const connectionMessage =
+    !credentials || connectionStatus === 'connected'
+      ? undefined
+      : connectionStatus === 'offline'
+        ? '网络已断开，恢复连接后将自动同步。'
+        : connectionStatus === 'reconnecting'
+          ? '同步暂时中断，正在自动重连…'
+          : '正在恢复联机房间…';
 
   const goHome = () => {
     setScreen('home');
@@ -403,6 +545,7 @@ export default function GameClient() {
     setDeal(null);
     setRemote(null);
     setCredentials(null);
+    sessionStorage.removeItem(ROOM_SESSION_KEY);
     setOnlineError('');
     setLocalDiscard(null);
     setRemoteDiscard(null);
@@ -550,6 +693,7 @@ export default function GameClient() {
           onJoin={joinRoom}
           busy={onlineBusy}
           error={onlineError}
+          connectionMessage={connectionMessage}
           header={<TopBar onHome={goHome} onRules={() => setShowRules(true)} />}
         />
       );
@@ -574,6 +718,7 @@ export default function GameClient() {
           }
           readyLabel="确认手牌"
           waiting={remote.ownReady}
+          connectionMessage={connectionMessage}
           onToggle={(id) => toggleSelected(id, setRemoteSelected)}
           onRecommend={remoteSuggest}
           onReady={remoteReady}
@@ -600,31 +745,25 @@ export default function GameClient() {
             opponentName="联机牌友"
             pendingRon={remote.canRon}
             pendingScore={remote.pendingScore}
+            actionBusy={remoteActionBusy}
+            turnDeadlineAt={remote.turnDeadlineAt}
+            canSurrender={remote.opponentJoined && remote.phase === 'playing'}
             furiten={remote.permanentFuriten || remote.temporaryFuriten}
-            result={
-              remote.result
-                ? remote.seat === 0
-                  ? remote.result
-                  : {
-                      ...remote.result,
-                      winner:
-                        remote.result.winner === undefined
-                          ? undefined
-                          : ((1 - remote.result.winner) as Seat),
-                    }
-                : null
-            }
+            result={remote.result ? orientResultForSeat(remote.result, remote.seat) : null}
             baseScore={remote.baseScore}
             onSelectDiscard={setRemoteDiscard}
             onDiscard={(id) => remoteAction('discard', { tileId: id })}
             onRon={() => remoteAction('ron')}
             onPass={() => remoteAction('pass')}
+            onSurrender={() => {
+              if (window.confirm('确定要认输并结束本局吗？')) void remoteAction('surrender');
+            }}
             onAgain={goHome}
             onHome={goHome}
             header={
               <TopBar onHome={goHome} onRules={() => setShowRules(true)} roomCode={remote.code} />
             }
-            waitingText={onlineError || undefined}
+            waitingText={onlineError || connectionMessage}
           />
         </div>
       );

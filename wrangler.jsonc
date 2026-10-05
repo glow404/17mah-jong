@@ -5,7 +5,14 @@
   "name": "mahjong-17",
   "compatibility_date": "2026-05-22",
   "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "MAINTENANCE_MODE": "false",
+    "MIN_GAME_PROTOCOL": "1",
+  },
   "main": "./worker/index.ts",
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
   "assets": {
     "binding": "ASSETS",
     "not_found_handling": "none",

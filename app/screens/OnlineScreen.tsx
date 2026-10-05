@@ -7,6 +7,7 @@ export function OnlineScreen({
   onJoin,
   busy,
   error,
+  connectionMessage,
   header,
 }: {
   baseScore: number;
@@ -15,6 +16,7 @@ export function OnlineScreen({
   onJoin: (code: string) => void;
   busy: boolean;
   error: string;
+  connectionMessage?: string;
   header: ReactNode;
 }) {
   const [code, setCode] = useState('');
@@ -68,6 +70,11 @@ export function OnlineScreen({
             </button>
           </article>
         </div>
+        {connectionMessage && (
+          <p className="online-error" role="status" aria-live="polite">
+            {connectionMessage}
+          </p>
+        )}
         {error && <p className="online-error">{error}</p>}
         <button className="rules-link" type="button" onClick={onBack}>
           返回首页

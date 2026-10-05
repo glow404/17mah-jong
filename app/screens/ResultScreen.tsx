@@ -24,8 +24,32 @@ export function ResultScreen({
         {result.kind === 'draw' ? (
           <>
             <div className="result-seal neutral">流</div>
-            <h2>十七巡流局</h2>
-            <p>双方各自打出 17 张牌，仍无人达到满贯荣和。</p>
+            <h2>{result.reason === 'both-disconnected' ? '双方掉线，牌局流局' : '十七巡流局'}</h2>
+            <p>
+              {result.reason === 'both-disconnected'
+                ? '双方都未能在重连宽限时间内恢复连接。'
+                : '双方各自打出 17 张牌，仍无人达到满贯荣和。'}
+            </p>
+          </>
+        ) : result.kind === 'forfeit' ? (
+          <>
+            <div className={`result-seal ${result.winner === 0 ? 'win' : 'lose'}`}>
+              {result.winner === 0 ? '胜' : '负'}
+            </div>
+            <h2>{result.winner === 0 ? '对手认输，你获胜' : '本局判负'}</h2>
+            <p>
+              {result.reason === 'resigned'
+                ? result.loser === 0
+                  ? '你已主动认输。'
+                  : `${opponentName}已主动认输。`
+                : result.reason === 'turn-timeout'
+                  ? result.loser === 0
+                    ? '你的操作超时。'
+                    : `${opponentName}操作超时。`
+                  : result.loser === 0
+                    ? '重连宽限时间已结束。'
+                    : `${opponentName}掉线且未及时重连。`}
+            </p>
           </>
         ) : (
           <>

@@ -11,6 +11,7 @@ import {
   DEFAULT_IMAGE_SIZES,
 } from 'vinext/server/image-optimization';
 import handler from 'vinext/server/app-router-entry';
+import { runRoomMaintenance } from './maintenance';
 
 interface Env {
   ASSETS: Fetcher;
@@ -27,6 +28,10 @@ interface Env {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+interface ScheduledController {
+  scheduledTime: number;
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
@@ -57,6 +62,10 @@ const worker = {
     }
 
     return handler.fetch(request, env, ctx);
+  },
+
+  scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext) {
+    ctx.waitUntil(runRoomMaintenance(env.DB, controller.scheduledTime));
   },
 };
 

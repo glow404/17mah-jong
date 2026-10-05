@@ -5,13 +5,32 @@
  * sessions 保存短期会话的哈希。字段名使用数据库命名，导出名使用
  * TypeScript 命名，供 Drizzle 查询和迁移生成器共同使用。
  */
-import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-export const gameRooms = sqliteTable('game_rooms', {
-  code: text('code').primaryKey(),
-  state: text('state').notNull(),
-  updatedAt: integer('updated_at').notNull(),
-});
+export const gameRooms = sqliteTable(
+  'game_rooms',
+  {
+    code: text('code').primaryKey(),
+    state: text('state').notNull(),
+    updatedAt: integer('updated_at').notNull(),
+  },
+  (table) => [index('idx_game_rooms_updated_at').on(table.updatedAt)],
+);
+
+export const roomPresence = sqliteTable(
+  'room_presence',
+  {
+    roomCode: text('room_code')
+      .notNull()
+      .references(() => gameRooms.code, { onDelete: 'cascade' }),
+    seat: integer('seat').notNull(),
+    lastSeenAt: integer('last_seen_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.roomCode, table.seat] }),
+    index('idx_room_presence_last_seen').on(table.lastSeenAt),
+  ],
+);
 
 export const users = sqliteTable('users', {
   id: text('id').primaryKey(),
